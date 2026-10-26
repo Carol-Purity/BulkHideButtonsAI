@@ -1,0 +1,13 @@
+# Environment-specific data - created when you run DemoHider. Never commit these.
+catalog/
+solutions/
+runs/
+manifests/
+plans/
+pickers/
+*.zip
+
+# Python / editor
+__pycache__/
+*.pyc
+.vscode/

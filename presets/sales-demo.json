@@ -1,0 +1,34 @@
+{
+  "name": "sales-demo",
+  "description": "Lean command bars for a Sales Hub demo: no reports, templates, flows, marketing or portal buttons",
+  "rules": [
+    {
+      "description": "Reports, templates and automation are not part of the demo",
+      "tables": ["account", "contact", "lead", "opportunity"],
+      "where": ["list", "form", "subgrid"],
+      "buttons": ["RunReport", "Reports", "WordTemplate", "DocumentTemplate", "Flows.RefreshCommandBar", "RunWorkflow", "MailMerge"]
+    },
+    {
+      "description": "Email a Link and Visualize this view clutter the list",
+      "tables": ["account", "contact", "lead", "opportunity"],
+      "where": ["list"],
+      "buttons": ["Send", "MainTab.QuickPowerBI.Button"]
+    },
+    {
+      "description": "Marketing quick campaigns are out of scope",
+      "tables": ["account", "contact", "lead"],
+      "buttons": ["QuickCampaign", "ModernQuickCampaign"]
+    },
+    {
+      "description": "Follow / Unfollow not used",
+      "tables": ["account", "contact", "lead", "opportunity"],
+      "buttons": ["FollowButton", "UnfollowButton", "NewUnfollowButton", "FollowButtonForYammer"]
+    },
+    {
+      "description": "Power Pages portal admin buttons",
+      "tables": "*",
+      "id_starts_with": ["adx.", "Microsoft.PowerPages."]
+    }
+  ],
+  "keep": []
+}
