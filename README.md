@@ -22,6 +22,8 @@ Built for demos: make the app show only the buttons that fit a customer's proces
 11. [Working with another environment or tenant](#11-another-environment-or-tenant)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Command cheat sheet](#13-command-cheat-sheet)
+14. [Limitations](#14-limitations)
+15. [License and disclaimer](#15-license-and-disclaimer)
 
 ---
 
@@ -100,6 +102,8 @@ DemoHider\
   demohider.ps1          <- the command you run
   README.md              <- this guide
   QUICK-REFERENCE.md     <- one-page command summary
+  LIMITATIONS.md         <- what DemoHider cannot do
+  LICENSE                <- MIT License
   scripts\
     build_catalog.py
     make_plan.py
@@ -752,3 +756,35 @@ powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Pic
 ```
 
 Add `-Unhide` to the same command to bring those buttons back.
+
+---
+
+## 14. Limitations
+
+The most important ones – full list in **[LIMITATIONS.md](LIMITATIONS.md)**:
+
+- **Classic ribbon buttons only.** Modern commands made in the command designer (e.g. *Open Dashboards*)
+  are not covered; neither are the site map, the app header or form tabs.
+- **Dynamic menus are all-or-nothing.** You can hide *Run Report* or *Flow*, but not individual
+  reports or flows inside them.
+- **Per table, for everyone, in every app** of the environment – not per app, user or security role.
+- **Hiding is not security.** Use security roles to really block an action.
+- **The list is longer than the screen.** Many buttons only appear in certain situations; only the
+  ones whose rules make it certain are marked *not in modern apps*.
+- **Buttons hidden by someone else** are not listed and are never touched.
+- **Keep the DemoHider solution to tables only** – everything in it is re-imported on every run.
+- **Rebuild the catalogue** after installing apps or after Microsoft updates.
+- **Windows**, with Python, `pac` and the Azure CLI. Press **Ctrl+F5** after changes.
+- Meant for **demo and development environments**.
+
+---
+
+## 15. License and disclaimer
+
+DemoHider is released under the **[MIT License](LICENSE)**: you may use, copy, change and share it,
+including commercially, as long as the copyright notice is kept. It is provided **as is**, without
+warranty of any kind.
+
+DemoHider is an independent project and is **not affiliated with, endorsed by, or supported by
+Microsoft**. Microsoft, Dynamics 365, Power Apps, Power Platform and Dataverse are trademarks of the
+Microsoft group of companies.
