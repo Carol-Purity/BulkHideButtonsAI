@@ -301,6 +301,7 @@ def cmd_find(args):
         if text and text not in hay:
             continue
         k = (r["scope"], r["button"])
+        rows[k].setdefault("modern", set()).add(r.get("modern", "unknown"))
         rows[k]["tables"].add(r["table"] or "ALL")
         rows[k]["where"].add(WHERE_NAMES.get(r["command_bar_location"], "other"))
         rows[k]["names"].add(display(r))
@@ -310,6 +311,8 @@ def cmd_find(args):
     print(f"{'BUTTON (use this in presets)':45} {'NAME':32} {'WHERE':20} TABLES")
     for (scope, b), v in sorted(rows.items(), key=lambda x: (x[0][0] != "table", x[0][1].lower())):
         tag = " [application]" if scope == "application" else ""
+        if v.get("modern") == {"hidden"}:
+            tag += " [not in modern apps]"
         print(f"{(b + tag)[:45]:45} {sorted(v['names'])[0][:32]:32} "
               f"{','.join(sorted(v['where']))[:20]:20} {','.join(sorted(v['tables']))}")
     print(f"\n{len(rows)} button name(s).")
