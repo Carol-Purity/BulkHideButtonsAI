@@ -15,12 +15,13 @@ Built for demos: make the app show only the buttons that fit a customer's proces
 4. [Connect to an environment (sign in)](#4-connect-to-an-environment)
 5. [Build the button catalogue](#5-build-the-button-catalogue)
 6. [Create the DemoHider solution](#6-create-the-demohider-solution)
-7. [Write a preset (the JSON file)](#7-write-a-preset)
-8. [Hide buttons](#8-hide-buttons)
-9. [Bring buttons back (unhide)](#9-bring-buttons-back)
-10. [Working with another environment or tenant](#10-another-environment-or-tenant)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Command cheat sheet](#12-command-cheat-sheet)
+7. [**Hide and unhide with tick boxes (easiest)**](#7-hide-and-unhide-with-tick-boxes-easiest)
+8. [Write a preset (optional – reusable rules)](#8-write-a-preset-optional)
+9. [Hide buttons with a preset](#9-hide-buttons-with-a-preset)
+10. [Bring buttons back (unhide)](#10-bring-buttons-back)
+11. [Working with another environment or tenant](#11-another-environment-or-tenant)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Command cheat sheet](#13-command-cheat-sheet)
 
 ---
 
@@ -32,8 +33,9 @@ one line to it that says *"hide this button"*. DemoHider writes those lines for 
 ```
  1. CATALOGUE     A list of every button in your environment, with exact IDs
                   (built once per environment)
- 2. PRESET        A small file YOU write: which buttons, on which tables, where
- 3. RUN           One command: checks everything, shows you the list, asks Y/N,
+ 2. CHOOSE        Tick the buttons to hide on a page in your browser
+                  (or, optionally, write a reusable "preset" file)
+ 3. RUN           DemoHider checks everything, shows you the list, asks Y/N,
                   updates a solution called "DemoHider" and imports it
  4. RESULT        Press Ctrl+F5 in the app - the buttons are gone
  5. UNDO          One command brings them back
@@ -101,6 +103,7 @@ DemoHider\
   scripts\
     build_catalog.py
     make_plan.py
+    picker_server.py     <- the tick-box page
     hide_engine.py
     publish_tables.py
   presets\
@@ -215,6 +218,17 @@ python scripts\build_catalog.py --env-url <EnvURL> --env-name <EnvName> --retry-
 This retries **only** the tables that failed. If it timed out again, add `--split`
 to fetch that table in smaller parts.
 
+### 5.4 Refresh the catalogue after updating DemoHider (no download)
+
+When you get a newer version of DemoHider, re-read the ribbon files you already downloaded
+so the catalogue picks up new information (such as which buttons are never shown in modern apps):
+
+```powershell
+python scripts\build_catalog.py --env-url <EnvURL> --env-name <EnvName> --reparse
+```
+
+This takes seconds and does not contact Dynamics.
+
 ---
 
 ## 6. Create the DemoHider solution
@@ -255,12 +269,92 @@ pac solution unpack --zipfile solutions\DemoHider.zip --folder solutions\DemoHid
 
 ---
 
-## 7. Write a preset
+## 7. Hide and unhide with tick boxes (easiest)
+
+This is the everyday way to use DemoHider: a page opens in your browser, you tick
+the buttons you want hidden, and click **Apply**. **Ticked = hidden.**
+
+### 7.1 Open the page
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Pick
+```
+
+Your browser opens the DemoHider page. If it doesn't, copy the link the terminal shows
+(it starts with `http://127.0.0.1:`) into your browser.
+
+> The page runs only on your own computer. Leave the terminal open while you use it.
+
+### 7.2 The page
+
+| Part of the page | What it does |
+|---|---|
+| **Tables** (left) | Pick one table, or **All tables** |
+| **Sections** | Each table is split into **List** (the main list of records), **Form** (inside a record) and **Subgrid** (a list shown inside a form) |
+| **Search** (top) | Type part of a button's name, e.g. `report`, `excel`, `flow` |
+| **Quick select** | One click ticks a whole group – Reports, Templates, Flows & workflows, Email a Link, Visualize this view, Marketing, Follow, Mail Merge, Power Pages – on the tables and places shown |
+| **Show** | Untick List / Form / Subgrid to hide those sections. **Only ticked** shows just your choices. **Buttons not shown in modern apps** also lists buttons whose rules mean they never appear in model-driven apps (e.g. Run Workflow, Mail Merge) – hidden from the list by default because hiding them changes nothing |
+| **tick it on every table** | When switched on, ticking a button ticks the same button on every table (same place) |
+| **▸ items in this menu** | Some buttons are menus. Ticking the menu hides everything in it |
+| Labels | **will hide** = hidden when you apply · **hidden** = already hidden · **will show** = comes back when you apply · **hidden with its menu** = inside a ticked menu (no separate action) · **not in modern apps** = never shown on screen anyway |
+| Header | The environment name **and URL** – check it is the one you mean |
+| Bottom bar | The counter shows how many buttons will be hidden / shown. **Apply** saves your choice |
+
+Each button shows its name and, underneath in grey, its short internal name.
+
+### 7.3 Example: hide reports and flows on all four tables
+
+1. Click **All tables** on the left.
+2. Click **Reports** and **Flows & workflows** under *Quick select*.
+3. Tick anything else you want gone (use the search box to find it).
+4. Click **Apply**. The page says *Choices saved* – you can close the tab.
+5. Back in the terminal you see the list and the question
+   `Apply these … change(s) to https://…? (Y/N)` – check the URL, type **Y** and press **Enter**.
+6. Wait for **Done!** (2–10 minutes), then press **Ctrl+F5** in the app.
+
+### 7.4 Bring buttons back
+
+Run the same command again. Buttons DemoHider has hidden are **already ticked**.
+
+- **Untick** the ones you want back → **Apply** → **Y**.
+- To bring back everything: click **Untick all** → **Apply** → **Y**
+  (or use `-UnhideAll`, section 10).
+
+You can hide some buttons and bring others back in the same go.
+
+### 7.5 Save your choice for the next demo
+
+1. Tick the buttons.
+2. Type a name in **Name for this set** (letters, numbers, `-` or `_`, no spaces), e.g. `customer-abc`.
+3. Click **Save set**. It is saved in the `presets` folder.
+
+Next time, choose it in **Load a saved set…** – its buttons are ticked for you. Saved sets also
+work in other environments, and with `-Preset` (section 9).
+
+### 7.6 Notes
+
+- **Environment check:** before changing anything, DemoHider compares the environment `pac` is
+  signed in to with the catalogue's environment. If they differ it stops – see section 11 to switch.
+- **Menus:** ticking a menu hides everything in it. Its items show *hidden with its menu* and get no
+  action of their own, so a menu can never be hidden and its items restored at the same time.
+- **What can be restored:** only hides DemoHider made, read from the solution files themselves.
+  Hides made by anyone else are never shown as restorable and are never touched.
+- The page lists the buttons that exist on each table – including some your users only see in certain
+  situations (e.g. after selecting a record). Hiding those is harmless.
+- **Cancel** closes the page without changing anything.
+- If you change your mind after Apply, answer **N** in the terminal – nothing is changed.
+
+---
+
+## 8. Write a preset (optional)
+
+> **You don't need presets to use DemoHider** – the tick-box page (section 7) does everything.
+> Presets are for when you want the *same* choice in many environments, written as rules.
 
 A **preset** is a small text file in the `presets` folder that says **what to hide**.
 You write it once and reuse it in every demo and every environment.
 
-### 7.1 The idea: short button names
+### 8.1 The idea: short button names
 
 Every button has a **short name** that is the **same on every table**:
 
@@ -277,7 +371,7 @@ Every button has a **short name** that is the **same on every table**:
 
 So *"hide RunReport on account, contact and lead"* hides it on all three tables at once.
 
-### 7.2 Find the short name of any button
+### 8.2 Find the short name of any button
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -Find <word>
@@ -300,11 +394,11 @@ ImportDataFromExcel              Import From Excel          list          contac
 - Use the value in the **BUTTON** column in your preset.
 - **WHERE** tells you where it appears: `list` (the main list of records), `form`
   (inside a record), `subgrid` (a list shown inside a form).
-- Rows marked `[application]` are global buttons – see 7.6.
+- Rows marked `[application]` are global buttons – see 8.6.
 - Search with a word from the button's name on screen (e.g. `report`, `template`, `flow`, `share`).
   If nothing is found, try a shorter word.
 
-### 7.3 Create your preset file
+### 8.3 Create your preset file
 
 1. In VS Code, right-click the `presets` folder → **New File** → name it, e.g. `my-demo.json`
    (lowercase, no spaces, ends in `.json`).
@@ -328,7 +422,7 @@ ImportDataFromExcel              Import From Excel          list          contac
 
 3. Save (**Ctrl+S**).
 
-### 7.4 What each line means
+### 8.4 What each line means
 
 | Line | Meaning | Rules |
 |---|---|---|
@@ -341,7 +435,7 @@ ImportDataFromExcel              Import From Excel          list          contac
 | `"buttons"` | Which buttons | Short names from `-Find` |
 | `"keep"` | Exceptions that are **never** hidden | Written like a rule; `[]` means none |
 
-### 7.5 Examples
+### 8.5 Examples
 
 **Hide the same buttons on several tables at once** – list the tables:
 
@@ -423,7 +517,7 @@ Other conditions you can use in a rule instead of (or with) `"buttons"`:
 
 Inside one rule, **all** conditions must match.
 
-### 7.6 Global buttons (advanced, optional)
+### 8.6 Global buttons (advanced, optional)
 
 Rules normally hide a button **table by table**. With `"scope": "application"` a rule hides
 a global button on **all tables at once**:
@@ -442,7 +536,7 @@ make.powerapps.com → DemoHider → **Switch to classic** → **Add Existing �
 Application Ribbons**, then export and unpack again (6.3 steps 2–3).
 Use the names `-Find` shows with `[application]`.
 
-### 7.7 JSON mistakes to avoid
+### 8.7 JSON mistakes to avoid
 
 JSON is strict. Most errors are one of these:
 
@@ -456,7 +550,7 @@ JSON is strict. Most errors are one of these:
 VS Code underlines JSON errors in red – fix them before running.
 If DemoHider says *"is not valid JSON"*, it also tells you the line number.
 
-### 7.8 The example preset
+### 8.8 The example preset
 
 `presets\sales-demo.json` is a ready-made preset. On Account, Contact, Lead and Opportunity it hides
 reports, templates, flows, workflows, mail merge, Email a Link, Visualize this view, quick campaigns,
@@ -464,9 +558,9 @@ Follow/Unfollow and Power Pages buttons. Copy it as a starting point for your ow
 
 ---
 
-## 8. Hide buttons
+## 9. Hide buttons with a preset
 
-### 8.1 The command
+### 9.1 The command
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Preset presets\<preset-file>.json
@@ -483,7 +577,7 @@ powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Prese
 > `[string]$EnvName = "CUS-Dev",` near the top and change `CUS-Dev` to your `<EnvName>`.
 > Then you can leave `-EnvName` out.
 
-### 8.2 What happens
+### 9.2 What happens
 
 ```
 ==> Building the list from preset 'sales-demo'
@@ -513,22 +607,23 @@ changed tables. This takes **2–10 minutes**. Wait for:
 Done! In the app press Ctrl+F5 to see the result.
 ```
 
-### 8.3 Check the result
+### 9.3 Check the result
 
 Open the app, go to the table, press **Ctrl+F5** (a normal refresh may still show the old buttons).
 Check the list, a record (form) and the **⋮** overflow menu.
 
-### 8.4 Running it again is safe
+### 9.4 Running it again is safe
 
 Running the same preset again shows *"Nothing to change"*. You can also add more rules to the
 preset and run it again – only the new buttons are hidden.
 
 ---
 
-## 9. Bring buttons back
+## 10. Bring buttons back
 
 | You want to… | Command |
 |---|---|
+| Choose on the tick-box page (untick to bring back) | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Pick` |
 | Bring back the buttons of **one preset** | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Preset presets\<preset-file>.json -Unhide` |
 | Undo **only the last** change | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Undo` |
 | Bring back **everything** DemoHider has hidden (reset after a demo) | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -UnhideAll` |
@@ -544,7 +639,7 @@ and then run your edited preset again.
 
 ---
 
-## 10. Another environment or tenant
+## 11. Another environment or tenant
 
 Presets work in every environment – only the catalogue and the solution are per environment.
 
@@ -566,7 +661,7 @@ Presets work in every environment – only the catalogue and the solution are pe
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Solution solutions\DemoHider-<EnvName> -Preset presets\sales-demo.json
    ```
-   Use the same two options for `-Unhide`, `-Undo` and `-UnhideAll`.
+   Use the same two options for `-Pick`, `-Unhide`, `-Undo` and `-UnhideAll`.
 
 **Switching between environments:** `pac` imports into the environment you are currently signed in to.
 
@@ -581,7 +676,7 @@ pac org who                        # confirm
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Message or problem | What to do |
 |---|---|
@@ -590,14 +685,17 @@ pac org who                        # confirm
 | `Could not get a token` | Sign-in expired: `az login --tenant <Tenant> --allow-no-subscriptions` |
 | `Catalogue not found: catalog\...` | Build the catalogue (section 5) or check `-EnvName` matches the folder name in `catalog`. |
 | `Solution folder not found` | Export and unpack (6.2), or check `-Solution`. |
-| `is not valid JSON` | Fix the preset (7.7). The message gives the line number. |
+| `is not valid JSON` | Fix the preset (8.7). The message gives the line number. |
 | `NOTE: no match in this environment for: X` | That button name doesn't exist on those tables here. Check it with `-Find`. Other rules still work. |
 | `BLOCKED ... table 'x' is not in the solution` | Add the table to DemoHider and export/unpack again (6.3). |
 | `BLOCKED ... not found in catalogue` / `not found in the source ribbon XML` | The catalogue is out of date: rebuild it (5.1). |
 | `BLOCKED ... Hidden by another customization` | Someone else hid it (e.g. with Ribbon Workbench). DemoHider leaves it alone. |
 | `changed since the preview` | Run the same command again. |
+| The tick-box page doesn't open | Copy the `http://127.0.0.1:...` link from the terminal into your browser. Keep the terminal open. |
+| A table is missing on the tick-box page | Add it to the catalogue (5.1 with `--tables`) and to the solution (6.3). |
 | A table times out while building the catalogue | `--retry-failed`, and add `--split` if needed (5.3). |
 | Import or publish drops the connection | The import usually still finished. Wait a few minutes and press Ctrl+F5. If nothing changed: `python scripts\publish_tables.py --run runs\<newest-run-folder>` |
+| `These are different environments - nothing was changed` | `pac` is signed in to another environment. Run `pac auth list`, then `pac auth select --name <EnvName>`, and run the command again. |
 | Buttons still visible after Done | Press **Ctrl+F5**, or open the app in a private window. Check that you are in the right environment (`pac org who`). |
 | One particular button won't hide | It may be a different button with a similar name (e.g. form vs list – check `-Find`), or a **modern command** (e.g. *Open Dashboards*), which DemoHider cannot hide. |
 
@@ -605,7 +703,7 @@ When asking for help, copy the **whole** terminal output.
 
 ---
 
-## 12. Command cheat sheet
+## 13. Command cheat sheet
 
 Replace `<...>` with your values. `DH` below is short for
 `powershell -ExecutionPolicy Bypass -File .\demohider.ps1`.
@@ -619,6 +717,7 @@ Replace `<...>` with your values. `DH` below is short for
 | Add tables to catalogue | `... --tables account,contact,quote` |
 | Retry failed tables | `... --retry-failed` (add `--split` if needed) |
 | Export + unpack solution | `pac solution export --name DemoHider --path solutions\DemoHider.zip` then `pac solution unpack --zipfile solutions\DemoHider.zip --folder solutions\DemoHider --packagetype Unmanaged` |
+| **Tick buttons to hide / untick to show** | `DH -EnvName <EnvName> -Pick` |
 | Find a button's short name | `DH -EnvName <EnvName> -Find <word>` (add `-Table <table>`) |
 | Hide with a preset | `DH -EnvName <EnvName> -Preset presets\<file>.json` |
 | Unhide a preset | `DH -EnvName <EnvName> -Preset presets\<file>.json -Unhide` |
@@ -630,9 +729,9 @@ Replace `<...>` with your values. `DH` below is short for
 
 ```powershell
 pac org who                                                                          # 1. right environment?
-powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Preset presets\sales-demo.json   # 2. hide, answer Y
+powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Pick   # 2. tick, Apply, answer Y
 #    ...Ctrl+F5, run the demo...
-powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -UnhideAll                        # 3. reset, answer Y
+powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -UnhideAll   # 3. reset, answer Y
 ```
 
 ---

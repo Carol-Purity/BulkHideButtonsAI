@@ -1,8 +1,12 @@
 <#
   DemoHider - one-step runner
   ===========================
-  Choose WHAT to hide in one of three ways; the runner checks it, shows you the
-  list, asks for your OK, and updates Dynamics.
+  Choose WHAT to hide; the runner checks it, shows you the list, asks for your
+  OK, and updates Dynamics.
+
+  TICK BOXES (easiest - opens a page in your browser):
+      .\demohider.ps1 -Pick
+      Ticked = hidden. Untick a hidden button to bring it back. Click Apply.
 
   PRESET (reusable rules):
       .\demohider.ps1 -Preset presets\sales-demo.json            hide
@@ -32,6 +36,7 @@ param(
     [string]$Preset,
     [string]$Picker,
     [string]$Plan,
+    [switch]$Pick,
     [switch]$Unhide,
     [switch]$UnhideAll,
     [switch]$Undo,
@@ -64,6 +69,35 @@ function Need-File($path, $what) {
 function Get-Runs {
     if (-not (Test-Path "runs")) { return @() }
     return Get-ChildItem "runs" -Directory | Sort-Object Name -Descending
+}
+
+function Get-CatalogUrl {
+    $head = (Get-Content $Catalog -TotalCount 30) -join "`n"
+    if ($head -match '"environment_url"\s*:\s*"([^"]+)"') { return $Matches[1] }
+    return $null
+}
+
+function Confirm-Environment {
+    # Make sure pac will import into the same environment the catalogue was built from.
+    $catalogUrl = Get-CatalogUrl
+    $who = (pac org who 2>&1) -join "`n"
+    $pacOk = $LASTEXITCODE -eq 0
+    if (-not $pacOk -or -not ($who -match 'Org URL:\s*(\S+)')) {
+        Stop-With "Could not check which environment pac is connected to. Run  pac org who  and sign in with  pac auth create  if needed."
+    }
+    $pacUrl = $Matches[1]
+    $norm = { param($u) ($u -replace '/+$', '').ToLower() }
+    Write-Host ""
+    Write-Host "Environment check" -ForegroundColor Cyan
+    Write-Host "  Catalogue ($EnvName): $catalogUrl"
+    Write-Host "  pac is connected to : $pacUrl"
+    if (-not $catalogUrl) {
+        Stop-With "Could not read the environment URL from $Catalog - rebuild the catalogue."
+    }
+    if ((& $norm $catalogUrl) -ne (& $norm $pacUrl)) {
+        Stop-With "These are different environments - nothing was changed. Switch with  pac auth select --name <name>  (see pac auth list), or use the matching -EnvName."
+    }
+    Write-Host "  OK - same environment." -ForegroundColor Green
 }
 
 function Send-ToDynamics($RunDir) {
@@ -123,6 +157,7 @@ if ($Undo) {
     }
     if (-not $last) { Write-Host "Nothing to undo."; exit 0 }
     Need-File $Solution "Solution folder"
+    Confirm-Environment
 
     Write-Step "Undoing: $($last.Name)"
     python scripts\hide_engine.py rollback --run $last.FullName
@@ -135,15 +170,23 @@ if ($Undo) {
 }
 
 # ------------------------------------------------------------- build the plan
-$chosen = @($Preset, $Picker, $Plan | Where-Object { $_ }).Count + [int][bool]$UnhideAll
+$chosen = @($Preset, $Picker, $Plan | Where-Object { $_ }).Count + [int][bool]$UnhideAll + [int][bool]$Pick
 if ($chosen -eq 0) {
-    Stop-With "Say what to do, e.g.  .\demohider.ps1 -Preset presets\sales-demo.json   (see the top of this file for all options)"
+    Stop-With "Say what to do, e.g.  .\demohider.ps1 -Pick   (see the top of this file for all options)"
 }
-if ($chosen -gt 1) { Stop-With "Use only one of -Preset, -Picker, -Plan or -UnhideAll at a time." }
+if ($chosen -gt 1) { Stop-With "Use only one of -Pick, -Preset, -Picker, -Plan or -UnhideAll at a time." }
 Need-File $Solution "Solution folder"
+Confirm-Environment
 New-Item -ItemType Directory -Force -Path "plans" | Out-Null
 
-if ($Preset) {
+if ($Pick) {
+    $PlanFile = "plans\picked.json"
+    Write-Step "Opening the tick-box page in your browser"
+    python scripts\picker_server.py --catalog $Catalog --out $PlanFile --solution $Solution
+    if ($LASTEXITCODE -eq 3 -or $LASTEXITCODE -eq 4) { exit 0 }    # cancelled / no changes
+    if ($LASTEXITCODE -ne 0) { Stop-With "The tick-box page stopped - see the message above." }
+}
+elseif ($Preset) {
     Need-File $Preset "Preset"
     $name = [IO.Path]::GetFileNameWithoutExtension($Preset)
     $PlanFile = if ($Unhide) { "plans\$name-unhide.json" } else { "plans\$name.json" }
@@ -203,7 +246,7 @@ if ($info.blocked_count -gt 0) {
 }
 
 Write-Host ""
-$answer = Read-Host "Apply these $($info.change_count) change(s) to Dynamics? (Y/N)"
+$answer = Read-Host "Apply these $($info.change_count) change(s) to $(Get-CatalogUrl)? (Y/N)"
 if ($answer -notmatch '^[Yy]') { Write-Host "Cancelled - nothing was changed."; exit 0 }
 
 Write-Step "Step 2 of 4 - Updating the solution files"

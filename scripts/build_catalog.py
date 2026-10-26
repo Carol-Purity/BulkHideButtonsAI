@@ -104,7 +104,7 @@ COMMON_NAMES = {
 }
 
 CSV_FIELDS = ["scope", "table", "command_bar_location", "location_name", "uci_relevant",
-              "label", "label_hint", "control_id", "command_id", "control_type",
+              "modern", "modern_reason", "label", "label_hint", "control_id", "command_id", "control_type",
               "parent_control_id", "defined_in", "publisher_prefix", "label_key",
               "tab_id", "group_id", "record_key"]
 
@@ -317,9 +317,96 @@ def location_of(tab: str, group: str, control_id: str) -> str:
     return "Other"
 
 
+# ------------------------------------------------- shown in modern apps?
+# Each command has display/enable rules that Dynamics evaluates live in the
+# browser. Most depend on the user or record and cannot be known in advance,
+# but some are fixed for the Unified Interface (modern model-driven apps), e.g.
+# Mscrm.HideOnModern = "never show in modern apps". Rules are evaluated as
+# True / False / None (unknown); a button is "hidden" only if a rule is
+# definitely False.
+
+def _invert(el, result):
+    if result is None:
+        return None
+    return (not result) if el.get("InvertResult", "false").lower() == "true" else result
+
+
+def _rule_value(el):
+    tag = local(el.tag)
+    if tag == "CommandClientTypeRule":
+        t = el.get("Type", "")
+        r = True if t == "Modern" else False if t == "Legacy" else None
+    elif tag == "CrmClientTypeRule":
+        t = el.get("Type", "")
+        r = False if t == "Outlook" else True if t == "Web" else None
+    elif tag == "PageRule":
+        # classic web-client pages (.aspx) never host the modern command bar
+        r = False if el.get("Address", "").lower().endswith(".aspx") else None
+    elif tag == "CrmOfflineAccessStateRule":
+        r = False if el.get("State") == "Offline" else None   # assume online
+    elif tag == "CustomRule":
+        fn = el.get("FunctionName", "")
+        r = (False if fn == "XrmCore.Rules.Enabled.neverEnabled"
+             else True if fn == "XrmCore.Rules.Enabled.alwaysEnabled" else None)
+    elif tag == "OrRule":
+        vals = [_all_true(list(o)) for o in el if local(o.tag) == "Or"]
+        r = True if any(v is True for v in vals) else \
+            False if vals and all(v is False for v in vals) else None
+    else:
+        r = None
+    return _invert(el, r)
+
+
+def _all_true(rule_elements):
+    vals = [_rule_value(e) for e in rule_elements]
+    if any(v is False for v in vals):
+        return False
+    return True if all(v is True for v in vals) else None
+
+
+def build_rule_index(root):
+    display, enable, commands = {}, {}, {}
+    for el in root.iter():
+        tag = local(el.tag)
+        if tag == "DisplayRule" and el.get("Id") and len(el):
+            display.setdefault(el.get("Id"), el)
+        elif tag == "EnableRule" and el.get("Id") and len(el):
+            enable.setdefault(el.get("Id"), el)
+        elif tag == "CommandDefinition" and el.get("Id"):
+            if el.get("Id") in commands:
+                continue
+            d = [r.get("Id") for r in el.iter() if local(r.tag) == "DisplayRule" and r.get("Id")]
+            e = [r.get("Id") for r in el.iter() if local(r.tag) == "EnableRule" and r.get("Id")]
+            commands[el.get("Id")] = (d, e)
+    return display, enable, commands
+
+
+def modern_visibility(command_id, index):
+    """Returns ('hidden'|'shown'|'unknown', reason)."""
+    display, enable, commands = index
+    if not command_id or command_id not in commands:
+        return "unknown", ""
+    d_ids, e_ids = commands[command_id]
+    results = []
+    for rid in d_ids:
+        el = display.get(rid)
+        v = _all_true(list(el)) if el is not None else None
+        if v is False:
+            return "hidden", rid
+        results.append(v)
+    for rid in e_ids:
+        el = enable.get(rid.strip())
+        v = _all_true(list(el)) if el is not None else None
+        if v is False:
+            return "hidden", f"{rid.strip()} (never enabled)"
+        results.append(v)
+    return ("shown" if all(v is True for v in results) else "unknown"), ""
+
+
 def parse_ribbon(xml_text, source, scope, table, source_file, lcid) -> list[dict]:
     root = ET.fromstring(xml_text)
     loclabels = collect_loclabels(root, lcid)
+    rule_index = build_rule_index(root)
     ui = next((el for el in root.iter() if local(el.tag) == "UI"), None)
     if ui is None:
         return []
@@ -342,7 +429,10 @@ def parse_ribbon(xml_text, source, scope, table, source_file, lcid) -> list[dict
                 label, label_source = key, "plain text"
             loc = location_of(tab, group, cid)
             command = el.get("Command", "")
+            modern, modern_reason = modern_visibility(command, rule_index)
             records.append({
+                "modern": modern,
+                "modern_reason": modern_reason,
                 "record_key": "|".join([scope, table or "*", loc, cid, command]),
                 "source": source,
                 "scope": scope,
@@ -372,6 +462,16 @@ def parse_ribbon(xml_text, source, scope, table, source_file, lcid) -> list[dict
             walk(child, tab, group, parent)
 
     walk(ui, "", "", "")
+
+    # a menu that is never shown takes its items with it
+    by_id = {r["control_id"]: r for r in records}
+    for r in records:
+        p, guard = r["parent_control_id"], 0
+        while p and p in by_id and guard < 10:
+            if by_id[p]["modern"] == "hidden":
+                r["modern"], r["modern_reason"] = "hidden", f"inside menu {p}"
+                break
+            p, guard = by_id[p]["parent_control_id"], guard + 1
     return records
 
 
@@ -473,6 +573,8 @@ def main():
     ap.add_argument("--retries", type=int, default=2, help="Retries per request (default 2)")
     ap.add_argument("--lcid", type=int, default=1033, help="Label language (default 1033 English)")
     ap.add_argument("--out", default="catalog", help="Output folder (default: catalog)")
+    ap.add_argument("--reparse", action="store_true",
+                    help="Rebuild the catalogue from the saved raw XML files (no download)")
     args = ap.parse_args()
 
     env_url = args.env_url.rstrip("/")
@@ -492,6 +594,34 @@ def main():
                    "note": "Merged ribbon at time of export. Buttons already hidden are not "
                            "listed. Modern (command designer) commands are not included.",
                    "sources": {}, "records": []}
+
+    if args.reparse:
+        if not catalog["sources"]:
+            sys.exit("ERROR: no catalogue to re-read yet - build it first without --reparse.")
+        print(f"Re-reading saved ribbon files in {raw_dir.resolve()} (no download)\n")
+        for name, src in catalog["sources"].items():
+            files = src.get("raw_files") or []
+            if src.get("status") != "ok" or not files:
+                print(f"  {name:15} skipped (no successful read saved)")
+                continue
+            scope, table = ("application", "") if name == APP else ("table", name)
+            try:
+                recs = []
+                for f in files:
+                    recs += parse_ribbon((out_dir / f).read_text(encoding="utf-8"),
+                                         name, scope, table, f, catalog.get("lcid", args.lcid))
+            except (OSError, ET.ParseError) as e:
+                print(f"  {name:15} FAILED: {e}")
+                continue
+            recs = dedupe(recs)
+            catalog["records"] = [r for r in catalog["records"] if r["source"] != name] + recs
+            src["record_count"] = len(recs)
+            hidden = sum(1 for r in recs if r.get("modern") == "hidden")
+            print(f"  {name:15} {len(recs)} buttons ({hidden} never shown in modern apps)")
+        mark_origin(catalog["records"])
+        write_outputs(catalog, out_dir)
+        print(f"\nUpdated {out_dir / 'catalog.json'}")
+        return
 
     if args.retry_failed:
         targets = [n for n, s in catalog["sources"].items() if s.get("status") != "ok"]

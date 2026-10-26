@@ -11,7 +11,7 @@ If Windows blocks the script, start each command with
 
 | Folder | Contents |
 |---|---|
-| `scripts\` | build_catalog.py, make_plan.py, hide_engine.py, publish_tables.py |
+| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, hide_engine.py, publish_tables.py |
 | `presets\` | Reusable rule files, e.g. sales-demo.json |
 | `pickers\` | Spreadsheets for ticking buttons by hand |
 | `catalog\<env>\` | Every button in an environment (rebuild per environment) |
@@ -22,14 +22,16 @@ If Windows blocks the script, start each command with
 
 | I want to… | Command |
 |---|---|
+| **Tick buttons to hide (untick to bring back)** | `.\demohider.ps1 -Pick` |
 | Hide a preset | `.\demohider.ps1 -Preset presets\sales-demo.json` |
 | Bring a preset back | `.\demohider.ps1 -Preset presets\sales-demo.json -Unhide` |
-| Tick buttons by hand | `.\demohider.ps1 -NewPicker` → tick `x` in Excel → `.\demohider.ps1 -Picker pickers\CUS-Dev.csv` |
+| Tick buttons in Excel | `.\demohider.ps1 -NewPicker` → tick `x` in Excel → `.\demohider.ps1 -Picker pickers\CUS-Dev.csv` |
 | Find a button's short name | `.\demohider.ps1 -Find report` (add `-Table contact`) |
 | Undo the last change | `.\demohider.ps1 -Undo` |
 | Bring back everything | `.\demohider.ps1 -UnhideAll` |
+| Refresh catalogue after an update (no download) | `python scripts\build_catalog.py --env-url <url> --env-name <name> --reparse` |
 
-Every command shows the list first and asks **Y/N** before changing anything.
+Every command first checks that `pac` is connected to the catalogue's environment, shows the list, and asks **Y/N** before changing anything.
 After it says **Done**, press **Ctrl+F5** in the app.
 
 ## Writing a preset

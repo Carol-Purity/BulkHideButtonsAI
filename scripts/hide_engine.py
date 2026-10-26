@@ -509,6 +509,10 @@ def cmd_preview(args):
                 if not rec.get("uci_relevant"):
                     e["warnings"].append("This location is not normally shown in model-driven "
                                          "apps; hiding it may have no visible effect.")
+                elif rec.get("modern") == "hidden":
+                    e["warnings"].append("Never shown in model-driven apps ("
+                                         f"{rec.get('modern_reason', '')}) - hiding it has no "
+                                         "visible effect.")
             try:
                 fs = file_for(solution_dir, rec, catalog, files)
             except EngineError as ex:
@@ -593,7 +597,8 @@ def cmd_preview(args):
             "record_key": r.get("record_key"), "scope": r.get("scope"), "table": r.get("table"),
             "command_bar_location": r.get("command_bar_location"),
             "control_id": r.get("control_id"), "command_id": r.get("command_id"),
-            "label": r.get("label") or r.get("label_hint"),
+            "label": ((e["input"].get("label") if isinstance(e["input"], dict) else None)
+                      or r.get("label") or r.get("label_hint")),
             "source_element": r.get("source_element"), "file": e.get("file"),
             "hide_action_id": e.get("hide_action_id"), "input": None if r else e["input"],
             "errors": e["errors"], "warnings": e["warnings"], "notes": e["notes"]}.items()
