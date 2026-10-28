@@ -125,6 +125,7 @@ DemoHider\
     picker_server.py     <- the tick-box page
     flow_server.py       <- the confirmation and progress page
     sender.py            <- update files, pack, import, publish (two rounds)
+    partial_solution.py  <- trimmed copy with only the changed tables (faster)
     hide_engine.py
     publish_tables.py
   presets\
@@ -290,16 +291,24 @@ pac solution unpack --zipfile solutions\DemoHider.zip --folder solutions\DemoHid
 
 ### 6.4 Keep the solution small (faster sending)
 
-Every change is sent by **importing the whole DemoHider solution, twice** (section 9.2).
-Dynamics processes **everything** inside it on each import. So the contents of the solution decide
-how long you wait:
+**DemoHider only sends the tables a change touches.** For each run it makes a trimmed copy of the
+solution, with just those tables, and packs and imports that copy, twice (section 9.2). Everything else
+in the solution (other tables, business rules, flows, …) is left out of the import and stays as it is in
+Dynamics. So hiding a button on Contact only imports Contact.
 
-| What is in the DemoHider solution | Typical time for one change |
+The progress page shows which tables are being sent, e.g. *Round 1 of 2 – 1/3 Packing the solution · Contact*.
+
+What is left that affects speed is **what is inside the tables you change**:
+
+| How the table was added to the DemoHider solution | Typical time for one change |
 |---|---|
-| Only the tables, added **without** columns, forms, views or table metadata (6.1 step 4) | a few minutes |
-| Tables with all their objects, and/or business rules, flows, forms, views, apps | 15–25 minutes or more |
+| **Without** columns, forms, views or table metadata (6.1 step 4) | a few minutes |
+| With all its objects (every column, form and view) | noticeably longer – Dynamics re-imports all of it |
 
-**Check yours**
+> If the trimmed copy can't be made or packed, DemoHider automatically sends the whole solution
+> instead (the log says so). To always send the whole solution, add **`-FullSolution`** to the command.
+
+**Check yours** (worth doing once – it makes every change on that table faster)
 
 - In make.powerapps.com, open the **DemoHider** solution. The list should contain **only tables**.
   Business rules, flows, forms, views, columns, apps and so on should **not** be listed.
@@ -321,7 +330,6 @@ how long you wait:
 
 **More ways to save time**
 
-- Only put tables in the solution that you really hide buttons on.
 - Once your solution is lean, try one change with **`-OneRound`** (one pack → import → publish instead of
   two). If the buttons disappear within a few minutes, you can keep using it – it halves the time.
 - Imports are slower when the environment is busy; early mornings are often quicker.
@@ -694,11 +702,11 @@ powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Prese
 - The full details are also in the `preview.md` the page names (in VS Code: right-click → **Open Preview**).
 
 After you confirm, it updates the files, runs a safety check, and **sends the change to Dynamics in
-three steps – twice**. The progress page and the terminal both show each step. In testing, the app only showed the change after a second pack, import and publish, so the
+three steps – twice**. Only the tables this change touches are packed and imported (6.4). The progress page and the terminal both show each step. In testing, the app only showed the change after a second pack, import and publish, so the
 runner always does two rounds for the same (latest) run:
 
 ```
-==> Round 1 of 2 - 1/3 Packing the solution    zips the DemoHider folder
+==> Round 1 of 2 - 1/3 Packing the solution    zips the changed tables (a trimmed copy)
 ==> Round 1 of 2 - 2/3 Importing into Dynamics uploads it (a few minutes - leave the window open)
 ==> Round 1 of 2 - 3/3 Publishing              publishes the changed tables of this run
 Round 1 done. Waiting 60 seconds before round 2 ...
@@ -723,6 +731,7 @@ Then wait a minute and check in a **new** InPrivate/Incognito window.
 |---|---|
 | `-OneRound` | Send only once (faster, but the app may not update) |
 | `-RoundWait 120` | Wait 120 seconds between the rounds instead of 60 |
+| `-FullSolution` | Import the whole DemoHider solution instead of only the changed tables (slower) |
 
 If round 1 works but round 2 fails, the result is shown in yellow – click **Send again** if the
 buttons haven't changed after a few minutes.
@@ -832,7 +841,8 @@ pac org who                        # confirm
 | The tick-box page doesn't open | Copy the `http://127.0.0.1:...` link from the terminal into your browser. Keep the terminal open. |
 | A table is missing on the tick-box page | Add it to the catalogue (5.1 with `--tables`) and to the solution (6.3). |
 | A table times out while building the catalogue | `--retry-failed`, and add `--split` if needed (5.3). |
-| Sending takes 15–25 minutes | The DemoHider solution contains more than bare tables. Slim it down (6.4). |
+| Sending still takes 15–25 minutes | Check the log for *sending the whole solution instead* – if it says so, the trimmed copy could not be used. Otherwise the changed table was added with all its objects: re-add it without them (6.4). |
+| A change didn't arrive, or the log mentions a missing component | Run the same command once with `-FullSolution`. |
 | `NOT LIVE YET` | The change is in your files but not published. Run `-Publish`; if that doesn't help, `-Send` (section 9.2). |
 | Said *Done!* but the change isn't visible after a few minutes | Run `-Publish` (publishes the last run again). Busy environments sometimes need a second publish. |
 | `These are different environments - nothing was changed` | `pac` is signed in to another environment. Run `pac auth list`, then `pac auth select --name <EnvName>`, and run the command again. |
@@ -865,6 +875,7 @@ Replace `<...>` with your values. `DH` below is short for
 | Publish the last run again | `DH -EnvName <EnvName> -Publish` |
 | Pack + import + publish the last run again | `DH -EnvName <EnvName> -Send` |
 | Bring back everything | `DH -EnvName <EnvName> -UnhideAll` |
+| Send the whole solution, not only the changed tables | add `-FullSolution` |
 | Confirm with Y/N in the terminal instead of the browser | add `-NoBrowser` to any command |
 | Other environment | add `-Solution solutions\DemoHider-<EnvName>` to every `DH` command |
 

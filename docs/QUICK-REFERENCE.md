@@ -11,7 +11,7 @@ If Windows blocks the script, start each command with
 
 | Folder | Contents |
 |---|---|
-| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, flow_server.py, sender.py, hide_engine.py, publish_tables.py |
+| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, flow_server.py, sender.py, partial_solution.py, hide_engine.py, publish_tables.py |
 | `presets\` | Reusable rule files, e.g. sales-demo.json |
 | `pickers\` | Spreadsheets for ticking buttons by hand |
 | `catalog\<env>\` | Every button in an environment (rebuild per environment) |
@@ -43,6 +43,7 @@ After **Done!**, wait a minute and check in a new InPrivate window.
 
 - `-NoBrowser` – confirm with Y/N in the terminal instead
 - `-OneRound` – send only once · `-RoundWait 120` – wait longer between rounds
+- `-FullSolution` – import the whole DemoHider solution, not only the changed tables
 
 ## Writing a preset
 
@@ -83,8 +84,9 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
 
 ## Faster sending
 
-Keep the DemoHider solution to **bare tables only** (no business rules, forms, views or table metadata).
-Then each change takes a few minutes instead of 20+. See [guide 6.4](GUIDE.md#64-keep-the-solution-small-faster-sending).
+Each change imports **only the tables it touches**. Add tables to DemoHider without their columns,
+forms and views, and a change takes a few minutes. `-FullSolution` sends the whole solution instead.
+See [guide 6.4](GUIDE.md#64-keep-the-solution-small-faster-sending).
 
 ## Limits
 

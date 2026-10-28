@@ -14,7 +14,7 @@ on every table you chose, in a supported way, with a full undo.
 - **Tick boxes in your browser.** Every button on every table you choose, grouped by
   *Main grid*, *Form* and *Subgrid*, with quick-select groups such as Reports, Templates and Flows.
 - **Check before anything changes.** A confirmation page shows the environment URL and every change.
-- **Live progress.** It updates a small unmanaged solution, then imports and publishes it.
+- **Live progress, and fast.** It imports only the tables you changed, then publishes them.
   You can watch each step.
 - **Safe undo.** Every change is backed up. *Undo this change*, or bring back everything after the demo.
 - **Reusable.** Save a set of buttons and use it again in another environment or tenant.
@@ -27,7 +27,7 @@ flowchart LR
     A[Build the button catalogue<br/>once per environment] --> B[Tick buttons<br/>in your browser]
     B --> C[Confirm<br/>environment and list]
     C --> D[DemoHider updates the<br/>DemoHider solution files]
-    D --> E[Pack, import, publish<br/>two rounds]
+    D --> E[Pack, import, publish<br/>only the changed tables<br/>two rounds]
     E --> F[Buttons hidden<br/>in the app]
     F -. one click .-> G[Undo / bring back]
 ```
@@ -75,8 +75,9 @@ After the demo, bring everything back:
 powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName MyEnv -UnhideAll
 ```
 
-> **Tip:** keep the DemoHider solution to bare tables only. A lean solution sends in a few minutes;
-> one with extra components can take 20+ minutes. → [Guide §6.4](docs/GUIDE.md#64-keep-the-solution-small-faster-sending)
+> **Fast by design:** each change imports only the tables it touches. Add tables to the DemoHider
+> solution *without* their columns, forms and views, and a change takes just a few minutes.
+> → [Guide §6.4](docs/GUIDE.md#64-keep-the-solution-small-faster-sending)
 
 ## Documentation
 
@@ -107,6 +108,7 @@ scripts\
   picker_server.py     the tick-box page
   flow_server.py       the confirmation and progress page
   sender.py            updates files, packs, imports and publishes
+  partial_solution.py  makes the trimmed copy with only the changed tables
   hide_engine.py       writes the hides, with backups and undo
   make_plan.py         presets, Find, and the Excel picker
   publish_tables.py    publishes only the changed tables
