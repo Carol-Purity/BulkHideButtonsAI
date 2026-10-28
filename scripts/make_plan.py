@@ -17,7 +17,7 @@ Commands (PowerShell, from the DemoHider folder)
 ------------------------------------------------
   # Search the catalogue for buttons and their short names
   python scripts\\make_plan.py find --catalog catalog\\CUS-Dev\\catalog.json --text report
-  python scripts\\make_plan.py find --catalog catalog\\CUS-Dev\\catalog.json --text excel --table contact --where list
+  python scripts\\make_plan.py find --catalog catalog\\CUS-Dev\\catalog.json --text excel --table contact --where "main grid"
 
   # 1. MANUAL: create a picker spreadsheet, put an x in the "hide" column, save
   python scripts\\make_plan.py picker --catalog catalog\\CUS-Dev\\catalog.json --out pickers\\CUS-Dev.csv
@@ -41,7 +41,8 @@ Preset file format (presets\\<name>.json)
       {
         "description": "Reports and templates",          (shown in the preview as the reason)
         "tables":  ["account", "contact"]  or  "*"        (* = every table in the catalogue)
-        "where":   ["list", "form", "subgrid"]            (optional; default = all three)
+        "where":   ["main grid", "form", "subgrid"]       (optional; default = all three;
+                                                   "list" also works for main grid)
         "buttons": ["RunReport", "WordTemplate"]          (short button names - use 'find')
       },
       {
@@ -72,11 +73,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 WHERE = {
-    "list": "HomepageGrid", "grid": "HomepageGrid", "main grid": "HomepageGrid",
+    "main grid": "HomepageGrid", "maingrid": "HomepageGrid", "main_grid": "HomepageGrid",
+    "list": "HomepageGrid", "grid": "HomepageGrid",
     "homepagegrid": "HomepageGrid", "form": "Form", "subgrid": "SubGrid",
     "dashboard": "Dashboard", "other": "Other",
 }
-WHERE_NAMES = {"HomepageGrid": "list", "Form": "form", "SubGrid": "subgrid",
+WHERE_NAMES = {"HomepageGrid": "main grid", "Form": "form", "SubGrid": "subgrid",
                "Dashboard": "dashboard", "Grid": "grid", "Other": "other"}
 DEFAULT_WHERE = ["HomepageGrid", "Form", "SubGrid"]
 RULE_KEYS = {"description", "tables", "where", "buttons", "id_starts_with", "id_contains",
@@ -178,7 +180,7 @@ def norm_where(values, where_from):
     for v in values:
         w = WHERE.get(str(v).strip().lower())
         if not w:
-            die(f"{where_from}: unknown place '{v}' - use list, form or subgrid")
+            die(f"{where_from}: unknown place '{v}' - use main grid, form or subgrid")
         out.append(w)
     return out
 
@@ -280,7 +282,7 @@ def print_summary(items, records_by_key, action):
     verb = "hide" if action == "hide" else "show again"
     print(f"\n{len(items)} button(s) to {verb}:")
     for (t, w), n in sorted(by.items()):
-        print(f"  {t:15} {w:8} {n}")
+        print(f"  {t:15} {w:10} {n}")
 
 
 # ================================================================= commands
@@ -308,13 +310,13 @@ def cmd_find(args):
     if not rows:
         print("No buttons found.")
         return
-    print(f"{'BUTTON (use this in presets)':45} {'NAME':32} {'WHERE':20} TABLES")
+    print(f"{'BUTTON (use this in presets)':45} {'NAME':32} {'WHERE':24} TABLES")
     for (scope, b), v in sorted(rows.items(), key=lambda x: (x[0][0] != "table", x[0][1].lower())):
         tag = " [application]" if scope == "application" else ""
         if v.get("modern") == {"hidden"}:
             tag += " [not in modern apps]"
         print(f"{(b + tag)[:45]:45} {sorted(v['names'])[0][:32]:32} "
-              f"{','.join(sorted(v['where']))[:20]:20} {','.join(sorted(v['tables']))}")
+              f"{','.join(sorted(v['where']))[:24]:24} {','.join(sorted(v['tables']))}")
     print(f"\n{len(rows)} button name(s).")
 
 
@@ -472,7 +474,7 @@ def main():
     p.add_argument("--catalog", required=True)
     p.add_argument("--text", help="Text to look for, e.g. report")
     p.add_argument("--table")
-    p.add_argument("--where", help="list, form or subgrid")
+    p.add_argument("--where", help="main grid, form or subgrid")
     p.add_argument("--include-menu-items", action="store_true")
 
     p = sub.add_parser("picker", help="Create a spreadsheet to tick buttons in")

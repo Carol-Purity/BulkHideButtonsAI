@@ -1,8 +1,9 @@
 <#
   DemoHider - one-step runner
   ===========================
-  Choose WHAT to hide; the runner checks it, shows you the list, asks for your
-  OK, and updates Dynamics.
+  Choose WHAT to hide; the runner checks it, opens a page in your browser that
+  shows the list and the environment, and after you click "Confirm and send"
+  updates Dynamics and shows the progress there (and here).
 
   TICK BOXES (easiest - opens a page in your browser):
       .\demohider.ps1 -Pick
@@ -27,8 +28,21 @@
       .\demohider.ps1 -UnhideAll     bring back everything DemoHider has hidden
       .\demohider.ps1 -Undo          undo only the last change
 
+  CHANGE NOT SHOWING / RUN INTERRUPTED:
+      .\demohider.ps1 -Publish       publish the last run again (fast)
+      .\demohider.ps1 -Send          pack + import + publish the last run again
+
   A ready-made plan file:
       .\demohider.ps1 -Plan plans\contact-grid-test.json
+
+  SENDING: every change is sent in TWO rounds automatically
+  (pack -> import -> publish, wait 60 s, pack -> import -> publish again),
+  always for the same, latest run.
+      -OneRound        send only once (faster, but the app may not update)
+      -RoundWait 120   seconds to wait between the rounds (default 60)
+
+  CONFIRM IN THE TERMINAL instead of the browser (Y/N, like before):
+      -NoBrowser       e.g.  .\demohider.ps1 -Preset presets\sales-demo.json -NoBrowser
 
   Optional:  -EnvName CUS-Dev   -Solution solutions\DemoHider
 #>
@@ -40,11 +54,16 @@ param(
     [switch]$Unhide,
     [switch]$UnhideAll,
     [switch]$Undo,
+    [switch]$Publish,
+    [switch]$Send,
     [switch]$NewPicker,
     [string]$Find,
     [string]$Table,
     [string]$EnvName = "CUS-Dev",
-    [string]$Solution = "solutions\DemoHider"
+    [string]$Solution = "solutions\DemoHider",
+    [switch]$OneRound,
+    [switch]$NoBrowser,
+    [int]$RoundWait = 60
 )
 
 Set-Location $PSScriptRoot
@@ -100,25 +119,46 @@ function Confirm-Environment {
     Write-Host "  OK - same environment." -ForegroundColor Green
 }
 
-function Send-ToDynamics($RunDir) {
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $zip = "solutions\DemoHider_$stamp.zip"
+$Rounds = if ($OneRound) { 1 } else { 2 }
+$SendArgs = @("--rounds", $Rounds, "--round-wait", $RoundWait)
 
-    Write-Step "Packing the solution"
-    pac solution pack --zipfile $zip --folder $Solution --packagetype Unmanaged
-    if ($LASTEXITCODE -ne 0) { Stop-With "Packing failed - see the message above." }
-
-    Write-Step "Importing into Dynamics (this takes a few minutes)"
-    pac solution import --path $zip
-    if ($LASTEXITCODE -ne 0) { Stop-With "Import failed - see the message above." }
-
-    Write-Step "Publishing only the tables that changed"
-    python scripts\publish_tables.py --run $RunDir
-    if ($LASTEXITCODE -eq 2) {
-        Write-Host "The import worked; publishing may still be finishing in Dynamics." -ForegroundColor Yellow
-    } elseif ($LASTEXITCODE -ne 0) {
-        Stop-With "Import worked but publishing failed. Publish from make.powerapps.com > Solutions > DemoHider > Publish all customizations."
+function Show-Result($code, $RunDir) {
+    # Final message in the terminal (the browser page shows the same result).
+    Write-Host ""
+    switch ($code) {
+        0 {
+            Write-Host "Not showing after a few minutes?  .\demohider.ps1 -Publish   (or -Send)"
+            Write-Host "Undo this change:  .\demohider.ps1 -Undo      Reset everything:  .\demohider.ps1 -UnhideAll"
+        }
+        5 {
+            Write-Host "Round 1 was sent, round 2 did not complete." -ForegroundColor Yellow
+            Write-Host "If the buttons have not changed in a few minutes:  .\demohider.ps1 -Send" -ForegroundColor Yellow
+        }
+        2 {
+            Write-Host "============================================================" -ForegroundColor Red
+            Write-Host " NOT LIVE YET - your files are updated, but sending did not finish" -ForegroundColor Red
+            Write-Host "============================================================" -ForegroundColor Red
+            Write-Host "Finish it with ONE of these:"
+            Write-Host "  .\demohider.ps1 -Publish     (publish again - try this first)" -ForegroundColor Yellow
+            Write-Host "  .\demohider.ps1 -Send        (pack + import + publish again)" -ForegroundColor Yellow
+            if ($RunDir) { Write-Host "Run folder: $RunDir" }
+        }
+        3 { Write-Host "Cancelled - nothing was changed." }
+        4 { Write-Host "Nothing to change - it's already like that." }
+        default { Write-Host "Stopped - see the message above. Nothing was sent to Dynamics." -ForegroundColor Red }
     }
+    exit $code
+}
+
+function Get-LastSentRun {
+    # newest run that changed something (applied, or rolled back by -Undo)
+    foreach ($r in Get-Runs) {
+        $f = Join-Path $r.FullName "run.json"
+        if (-not (Test-Path $f)) { continue }
+        $info = Get-Content $f -Raw | ConvertFrom-Json
+        if ($info.status -eq "applied" -or $info.status -eq "rolled_back") { return $r }
+    }
+    return $null
 }
 
 Need-File $Catalog "Catalogue"
@@ -148,25 +188,45 @@ if ($NewPicker) {
     exit 0
 }
 
+# ------------------------------------------- finish / repeat sending the last run
+if ($Publish -or $Send) {
+    $last = Get-LastSentRun
+    if (-not $last) { Stop-With "No previous run found to publish." }
+    Need-File $Solution "Solution folder"
+    Confirm-Environment
+    Write-Host ""
+    Write-Host "Last run: $($last.Name)"
+    $action = if ($Send) { "send" } else { "publish" }
+    if ($NoBrowser) {
+        if ($Send) { python scripts\sender.py send --run $last.FullName --catalog $Catalog --solution $Solution @SendArgs }
+        else { python scripts\sender.py publish --run $last.FullName }
+    } else {
+        python scripts\flow_server.py --catalog $Catalog --solution $Solution --run $last.FullName --action $action @SendArgs
+    }
+    Show-Result $LASTEXITCODE $last.FullName
+}
+
 # ------------------------------------------------------------------ undo last run
 if ($Undo) {
     $last = $null
     foreach ($r in Get-Runs) {
-        $info = Get-Content (Join-Path $r.FullName "run.json") -Raw | ConvertFrom-Json
+        $f = Join-Path $r.FullName "run.json"
+        if (-not (Test-Path $f)) { continue }
+        $info = Get-Content $f -Raw | ConvertFrom-Json
         if ($info.status -eq "applied") { $last = $r; break }
     }
     if (-not $last) { Write-Host "Nothing to undo."; exit 0 }
     Need-File $Solution "Solution folder"
     Confirm-Environment
-
-    Write-Step "Undoing: $($last.Name)"
-    python scripts\hide_engine.py rollback --run $last.FullName
-    if ($LASTEXITCODE -ne 0) { Stop-With "Undo stopped - see the message above." }
-
-    Send-ToDynamics $last.FullName
-    Write-Host ""
-    Write-Host "Done. In the app press Ctrl+F5 - the buttons are back." -ForegroundColor Green
-    exit 0
+    Write-Step "Undo: $($last.Name)"
+    if ($NoBrowser) {
+        $answer = Read-Host "Undo run $($last.Name) on $(Get-CatalogUrl)? (Y/N)"
+        if ($answer -notmatch '^[Yy]') { Show-Result 3 }
+        python scripts\sender.py send --undo --run $last.FullName --catalog $Catalog --solution $Solution @SendArgs
+    } else {
+        python scripts\flow_server.py --catalog $Catalog --solution $Solution --run $last.FullName --action undo @SendArgs
+    }
+    Show-Result $LASTEXITCODE $last.FullName
 }
 
 # ------------------------------------------------------------- build the plan
@@ -182,8 +242,15 @@ New-Item -ItemType Directory -Force -Path "plans" | Out-Null
 if ($Pick) {
     $PlanFile = "plans\picked.json"
     Write-Step "Opening the tick-box page in your browser"
+    if (-not $NoBrowser) {
+        # the same browser tab checks, asks you to confirm and shows the progress
+        python scripts\picker_server.py --catalog $Catalog --out $PlanFile --solution $Solution --flow @SendArgs
+        $code = $LASTEXITCODE
+        $run = Get-Runs | Select-Object -First 1
+        Show-Result $code $(if ($run) { $run.FullName })
+    }
     python scripts\picker_server.py --catalog $Catalog --out $PlanFile --solution $Solution
-    if ($LASTEXITCODE -eq 3 -or $LASTEXITCODE -eq 4) { exit 0 }    # cancelled / no changes
+    if ($LASTEXITCODE -eq 3 -or $LASTEXITCODE -eq 4) { Show-Result $LASTEXITCODE }
     if ($LASTEXITCODE -ne 0) { Stop-With "The tick-box page stopped - see the message above." }
 }
 elseif ($Preset) {
@@ -217,8 +284,17 @@ else {
     $PlanFile = $Plan
 }
 
-# ------------------------------------------------------- check, confirm, apply
-Write-Step "Step 1 of 4 - Checking (nothing is changed yet)"
+# ------------------------------------- confirm in the browser (default)
+if (-not $NoBrowser -and -not $Pick) {
+    Write-Step "Opening the confirmation page in your browser"
+    python scripts\flow_server.py --catalog $Catalog --solution $Solution --plan $PlanFile @SendArgs
+    $code = $LASTEXITCODE
+    $run = Get-Runs | Select-Object -First 1
+    Show-Result $code $(if ($run) { $run.FullName })
+}
+
+# ------------------------------------- or in the terminal (-NoBrowser)
+Write-Step "Step 1 of 2 - Checking (nothing is changed yet)"
 python scripts\hide_engine.py preview --catalog $Catalog --plan $PlanFile --solution $Solution
 if ($LASTEXITCODE -ne 0) { Stop-With "The check stopped - see the message above." }
 
@@ -232,7 +308,8 @@ foreach ($i in $info.items) {
     if ($i.status -eq "skip") { continue }
     $what = switch ($i.status) { "hide" { "HIDE   " } "unhide" { "SHOW   " } default { "BLOCKED" } }
     $where = if ($i.scope -eq "application") { "ALL tables" } else { $i.table }
-    if ($shown -lt 40) { Write-Host ("  {0}  {1,-12} {2,-13} {3}" -f $what, $where, $i.command_bar_location, $i.label) }
+    $place = switch ($i.command_bar_location) { "HomepageGrid" { "Main grid" } "SubGrid" { "Subgrid" } default { $i.command_bar_location } }
+    if ($shown -lt 40) { Write-Host ("  {0}  {1,-12} {2,-10} {3}" -f $what, $where, $place, $i.label) }
     $shown++
 }
 if ($shown -gt 40) { Write-Host "  ... and $($shown - 40) more" }
@@ -249,19 +326,6 @@ Write-Host ""
 $answer = Read-Host "Apply these $($info.change_count) change(s) to $(Get-CatalogUrl)? (Y/N)"
 if ($answer -notmatch '^[Yy]') { Write-Host "Cancelled - nothing was changed."; exit 0 }
 
-Write-Step "Step 2 of 4 - Updating the solution files"
-python scripts\hide_engine.py apply --run $run.FullName
-if ($LASTEXITCODE -ne 0) { Stop-With "Apply stopped - see the message above." }
-
-Write-Step "Step 3 of 4 - Final safety check"
-python scripts\hide_engine.py validate --catalog $Catalog --solution $Solution
-if ($LASTEXITCODE -ne 0) {
-    Stop-With "Safety check failed - nothing was sent to Dynamics. Run  .\demohider.ps1 -Undo  to reset the files."
-}
-
-Write-Step "Step 4 of 4 - Sending to Dynamics"
-Send-ToDynamics $run.FullName
-
-Write-Host ""
-Write-Host "Done! In the app press Ctrl+F5 to see the result." -ForegroundColor Green
-Write-Host "Undo this change:  .\demohider.ps1 -Undo      Reset everything:  .\demohider.ps1 -UnhideAll"
+Write-Step "Step 2 of 2 - Updating the files and sending to Dynamics"
+python scripts\sender.py send --apply --run $run.FullName --catalog $Catalog --solution $Solution @SendArgs
+Show-Result $LASTEXITCODE $run.FullName

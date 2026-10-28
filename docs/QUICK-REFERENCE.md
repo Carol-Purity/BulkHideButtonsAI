@@ -1,6 +1,6 @@
-# DemoHider – quick guide
+# DemoHider – quick reference
 
-Hide command bar buttons in Dynamics 365 / model-driven apps in bulk, and bring them back.
+One page of everyday commands. First time? Follow the [step-by-step guide](GUIDE.md).
 Run every command in the VS Code terminal from the DemoHider folder.
 
 If Windows blocks the script, start each command with
@@ -11,12 +11,13 @@ If Windows blocks the script, start each command with
 
 | Folder | Contents |
 |---|---|
-| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, hide_engine.py, publish_tables.py |
+| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, flow_server.py, sender.py, hide_engine.py, publish_tables.py |
 | `presets\` | Reusable rule files, e.g. sales-demo.json |
 | `pickers\` | Spreadsheets for ticking buttons by hand |
 | `catalog\<env>\` | Every button in an environment (rebuild per environment) |
 | `solutions\DemoHider\` | The unpacked DemoHider solution |
 | `plans\`, `runs\`, `manifests\` | Created automatically – what was asked, what was done, what is hidden |
+| `docs\` | This page, the guide, limitations, images |
 
 ## Everyday commands
 
@@ -28,11 +29,20 @@ If Windows blocks the script, start each command with
 | Tick buttons in Excel | `.\demohider.ps1 -NewPicker` → tick `x` in Excel → `.\demohider.ps1 -Picker pickers\CUS-Dev.csv` |
 | Find a button's short name | `.\demohider.ps1 -Find report` (add `-Table contact`) |
 | Undo the last change | `.\demohider.ps1 -Undo` |
+| Change not showing / run said NOT LIVE YET | `.\demohider.ps1 -Publish` (then `-Send` if needed) |
 | Bring back everything | `.\demohider.ps1 -UnhideAll` |
 | Refresh catalogue after an update (no download) | `python scripts\build_catalog.py --env-url <url> --env-name <name> --reparse` |
 
-Every command first checks that `pac` is connected to the catalogue's environment, shows the list, and asks **Y/N** before changing anything.
-After it says **Done**, press **Ctrl+F5** in the app.
+Every command first checks that `pac` is connected to the catalogue's environment, then opens a
+**confirmation page** in your browser: the environment URL and every change. Nothing changes until
+you click **Confirm and send**.
+The page then shows the progress: update files, safety check, and **two rounds** of
+pack → import → publish for the same latest run (60 s apart, with retries).
+At the end: **Publish again**, **Send again**, **Undo this change**, **Close**.
+After **Done!**, wait a minute and check in a new InPrivate window.
+
+- `-NoBrowser` – confirm with Y/N in the terminal instead
+- `-OneRound` – send only once · `-RoundWait 120` – wait longer between rounds
 
 ## Writing a preset
 
@@ -46,7 +56,7 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
     {
       "description": "Reports and templates",
       "tables": ["account", "contact"],
-      "where": ["list", "form", "subgrid"],
+      "where": ["main grid", "form", "subgrid"],
       "buttons": ["RunReport", "Reports", "WordTemplate"]
     }
   ],
@@ -56,7 +66,7 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
 
 - **buttons** – short names from `-Find`. The same name works on every table.
 - **tables** – logical names, or `"*"` for every table in the catalogue.
-- **where** – `list`, `form`, `subgrid` (leave out for all three).
+- **where** – `main grid`, `form`, `subgrid` (leave out for all three; `list` also works for main grid).
 - **keep** – exceptions that are never hidden, written like a rule.
 - Other conditions: `id_starts_with`, `id_contains`, `label_contains`, `commands`.
 - `"scope": "application"` hides a button on **all** tables at once
@@ -71,8 +81,15 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
    `pac solution unpack --zipfile solutions\DemoHider-<Name>.zip --folder solutions\DemoHider-<Name> --packagetype Unmanaged`
 4. `.\demohider.ps1 -EnvName <Name> -Solution solutions\DemoHider-<Name> -Preset presets\sales-demo.json`
 
+## Faster sending
+
+Keep the DemoHider solution to **bare tables only** (no business rules, forms, views or table metadata).
+Then each change takes a few minutes instead of 20+. See [guide 6.4](GUIDE.md#64-keep-the-solution-small-faster-sending).
+
 ## Limits
 
 - Modern commands (made in the command designer, e.g. *Open Dashboards*) cannot be hidden this way.
 - Hiding is not security – users may still reach the action another way.
 - A button hidden on a table is hidden in every app that uses that table in the environment.
+
+More: [limitations](LIMITATIONS.md) · [license](../LICENSE)
