@@ -76,7 +76,7 @@ DemoHider is a convenience tool for **demo and development environments**.
 - Use DemoHider in **demo, trial and development environments**. Do not use it in a customer's
   production environment without their agreement and your normal change process.
 - Always check the environment the runner shows before answering **Y**.
-- DemoHider is provided **as is**, without warranty (see [LICENSE](LICENSE)).
+- DemoHider is provided **as is**, without warranty (see [LICENSE](../LICENSE)).
 - DemoHider is an independent project. It is **not affiliated with, endorsed by, or supported by
   Microsoft**. Microsoft, Dynamics 365, Power Apps, Power Platform and Dataverse are trademarks of the
   Microsoft group of companies.

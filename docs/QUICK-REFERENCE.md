@@ -1,6 +1,6 @@
-# DemoHider – quick guide
+# DemoHider – quick reference
 
-Hide command bar buttons in Dynamics 365 / model-driven apps in bulk, and bring them back.
+One page of everyday commands. First time? Follow the [step-by-step guide](GUIDE.md).
 Run every command in the VS Code terminal from the DemoHider folder.
 
 If Windows blocks the script, start each command with
@@ -17,6 +17,7 @@ If Windows blocks the script, start each command with
 | `catalog\<env>\` | Every button in an environment (rebuild per environment) |
 | `solutions\DemoHider\` | The unpacked DemoHider solution |
 | `plans\`, `runs\`, `manifests\` | Created automatically – what was asked, what was done, what is hidden |
+| `docs\` | This page, the guide, limitations, images |
 
 ## Everyday commands
 
@@ -80,8 +81,15 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
    `pac solution unpack --zipfile solutions\DemoHider-<Name>.zip --folder solutions\DemoHider-<Name> --packagetype Unmanaged`
 4. `.\demohider.ps1 -EnvName <Name> -Solution solutions\DemoHider-<Name> -Preset presets\sales-demo.json`
 
+## Faster sending
+
+Keep the DemoHider solution to **bare tables only** (no business rules, forms, views or table metadata).
+Then each change takes a few minutes instead of 20+. See [guide 6.4](GUIDE.md#64-keep-the-solution-small-faster-sending).
+
 ## Limits
 
 - Modern commands (made in the command designer, e.g. *Open Dashboards*) cannot be hidden this way.
 - Hiding is not security – users may still reach the action another way.
 - A button hidden on a table is hidden in every app that uses that table in the environment.
+
+More: [limitations](LIMITATIONS.md) · [license](../LICENSE)
