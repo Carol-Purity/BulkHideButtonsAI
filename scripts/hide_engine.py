@@ -642,6 +642,14 @@ def cmd_preview(args):
         print(f"  python scripts\\hide_engine.py apply --run {run_dir}")
 
 
+PLACE_NAMES = {"HomepageGrid": "Main grid", "Form": "Form", "SubGrid": "Subgrid"}
+
+
+def place_name(loc):
+    """Name users see for a command bar location (HomepageGrid -> Main grid)."""
+    return PLACE_NAMES.get(loc or "", loc or "")
+
+
 def write_preview_md(run_dir: Path, run: dict, diffs: list[str]) -> None:
     L = [f"# DemoHider preview - {run['preset'] or run['run_id']}", "",
          f"- Environment: **{run['environment_name']}**",
@@ -662,7 +670,7 @@ def write_preview_md(run_dir: Path, run: dict, diffs: list[str]) -> None:
         for i in rows:
             where = "ALL tables" if i.get("scope") == "application" else (i.get("table") or "?")
             L.append(f"| {i.get('label', str(i.get('input', ''))[:60])} | {where} | "
-                     f"{i.get('command_bar_location', '')} | `{i.get('control_id', '')}` | "
+                     f"{place_name(i.get('command_bar_location'))} | `{i.get('control_id', '')}` | "
                      f"`{i.get('command_id', '')}` |")
         L.append("")
         details = [i for i in rows if i.get("errors") or i.get("warnings") or i.get("notes")]

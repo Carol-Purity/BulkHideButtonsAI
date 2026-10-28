@@ -11,7 +11,7 @@ If Windows blocks the script, start each command with
 
 | Folder | Contents |
 |---|---|
-| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, hide_engine.py, publish_tables.py |
+| `scripts\` | build_catalog.py, make_plan.py, picker_server.py, flow_server.py, sender.py, hide_engine.py, publish_tables.py |
 | `presets\` | Reusable rule files, e.g. sales-demo.json |
 | `pickers\` | Spreadsheets for ticking buttons by hand |
 | `catalog\<env>\` | Every button in an environment (rebuild per environment) |
@@ -32,9 +32,16 @@ If Windows blocks the script, start each command with
 | Bring back everything | `.\demohider.ps1 -UnhideAll` |
 | Refresh catalogue after an update (no download) | `python scripts\build_catalog.py --env-url <url> --env-name <name> --reparse` |
 
-Every command first checks that `pac` is connected to the catalogue's environment, shows the list, and asks **Y/N** before changing anything.
-It packs, imports and publishes **twice** (two rounds for the same latest run, 60 s apart, with retries). After **Done! … (2 rounds, confirmed)**, wait a minute and check in a new InPrivate window.
-Add `-OneRound` to send only once, or `-RoundWait 120` to wait longer between rounds.
+Every command first checks that `pac` is connected to the catalogue's environment, then opens a
+**confirmation page** in your browser: the environment URL and every change. Nothing changes until
+you click **Confirm and send**.
+The page then shows the progress: update files, safety check, and **two rounds** of
+pack → import → publish for the same latest run (60 s apart, with retries).
+At the end: **Publish again**, **Send again**, **Undo this change**, **Close**.
+After **Done!**, wait a minute and check in a new InPrivate window.
+
+- `-NoBrowser` – confirm with Y/N in the terminal instead
+- `-OneRound` – send only once · `-RoundWait 120` – wait longer between rounds
 
 ## Writing a preset
 
@@ -48,7 +55,7 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
     {
       "description": "Reports and templates",
       "tables": ["account", "contact"],
-      "where": ["list", "form", "subgrid"],
+      "where": ["main grid", "form", "subgrid"],
       "buttons": ["RunReport", "Reports", "WordTemplate"]
     }
   ],
@@ -58,7 +65,7 @@ A preset is a list of rules. Each rule says **which buttons**, on **which tables
 
 - **buttons** – short names from `-Find`. The same name works on every table.
 - **tables** – logical names, or `"*"` for every table in the catalogue.
-- **where** – `list`, `form`, `subgrid` (leave out for all three).
+- **where** – `main grid`, `form`, `subgrid` (leave out for all three; `list` also works for main grid).
 - **keep** – exceptions that are never hidden, written like a rule.
 - Other conditions: `id_starts_with`, `id_contains`, `label_contains`, `commands`.
 - `"scope": "application"` hides a button on **all** tables at once

@@ -5,13 +5,13 @@
     {
       "description": "Reports, templates and automation are not part of the demo",
       "tables": ["account", "contact", "lead", "opportunity"],
-      "where": ["list", "form", "subgrid"],
+      "where": ["main grid", "form", "subgrid"],
       "buttons": ["RunReport", "Reports", "WordTemplate", "DocumentTemplate", "Flows.RefreshCommandBar", "RunWorkflow", "MailMerge"]
     },
     {
       "description": "Email a Link and Visualize this view clutter the list",
       "tables": ["account", "contact", "lead", "opportunity"],
-      "where": ["list"],
+      "where": ["main grid"],
       "buttons": ["Send", "MainTab.QuickPowerBI.Button"]
     },
     {

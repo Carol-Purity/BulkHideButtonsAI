@@ -66,8 +66,8 @@ DemoHider is a convenience tool for **demo and development environments**.
 - Reading large ribbons (e.g. Account) can take minutes. Import and publish take 2–10 minutes and the
   connection can drop on busy environments (the import usually still completes).
 - Browsers **cache** the command bar: press **Ctrl+F5** or use a private window after each change.
-- The tick-box page runs a small local web server on `127.0.0.1` while it is open; it is not reachable
-  from other machines.
+- The tick-box, confirmation and progress pages run a small local web server on `127.0.0.1` while they
+  are open; it is not reachable from other machines. Keep the terminal window open while they run.
 - Tested in one environment/tenant so far. Other tenants should behave the same, but report anything
   unexpected.
 

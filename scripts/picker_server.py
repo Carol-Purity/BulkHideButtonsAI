@@ -2,14 +2,17 @@
 DemoHider - Tick-box picker
 ===========================
 Opens a page in your browser that lists every button by table and place
-(List / Form / Subgrid). Ticked = hidden. Click "Apply" and the plan file is
-written; demohider.ps1 then checks it, asks Y/N and updates Dynamics.
+(Main grid / Form / Subgrid). Ticked = hidden. Click "Apply" and the plan file is
+written. With --flow the same tab then shows the check, asks you to confirm and
+shows the progress of sending (flow_server.py). Without --flow, demohider.ps1
+asks Y/N in the terminal.
 
 You normally start it with:   .\\demohider.ps1 -Pick
 
 Runs only on your own computer (127.0.0.1). Nothing is sent anywhere else.
 
-Exit codes: 0 = plan written, 3 = cancelled, 4 = no changes, 1 = error
+Exit codes: 0 = plan written (or, with --flow, sent), 3 = cancelled, 4 = no changes,
+            1 = error / blocked, 2 = NOT LIVE YET, 5 = round 2 failed
 """
 
 import argparse
@@ -25,9 +28,10 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import make_plan as mp  # noqa: E402
+import flow_server  # noqa: E402
 
 WHERE_ORDER = {"HomepageGrid": 0, "Form": 1, "SubGrid": 2}
-WHERE_LABEL = {"HomepageGrid": "List", "Form": "Form", "SubGrid": "Subgrid"}
+WHERE_LABEL = {"HomepageGrid": "Main grid", "Form": "Form", "SubGrid": "Subgrid"}
 
 # Names users see on screen for well-known buttons (short button name -> label)
 FRIENDLY = {
@@ -204,7 +208,13 @@ def main():
     ap.add_argument("--prefix", default="demohider")
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--flow", action="store_true",
+                    help="After Apply: check, confirm and send in the same browser tab")
+    ap.add_argument("--rounds", type=int, default=2)
+    ap.add_argument("--round-wait", type=int, default=60)
     args = ap.parse_args()
+    if args.flow and not args.solution:
+        ap.error("--flow needs --solution")
 
     cat = mp.load_catalog(args.catalog)
     env = cat["environment_name"]
@@ -215,6 +225,8 @@ def main():
     token = secrets.token_urlsafe(16)
     result = {"code": None}
     done = threading.Event()
+    flow = flow_server.Flow(args.catalog, args.solution, max(1, args.rounds),
+                            args.round_wait) if args.flow else None
 
     page = (PAGE.replace("__DATA__", json.dumps({
         "env": env, "url": cat.get("environment_url", ""), "items": items, "groups": GROUPS,
@@ -241,12 +253,18 @@ def main():
         def do_GET(self):
             u = urlparse(self.path)
             q = parse_qs(u.query)
-            if u.path == "/":
+            if u.path in ("/", "/flow"):
                 if not self.ok_token(q):
                     return self.send(403, "Open the link shown in the terminal.", "text/plain")
+                if u.path == "/flow" and flow:
+                    return self.send(200, flow_server.page_html(token), "text/html")
                 return self.send(200, page, "text/html")
             if not self.ok_token(q):
                 return self.send(403, '{"error":"bad token"}')
+            if flow and u.path.startswith("/flow/"):
+                r = flow.handle("GET", u.path, {})
+                if r:
+                    return self.send(r[0], json.dumps(r[1]))
             if u.path == "/presets":
                 names = sorted(p.stem for p in presets_dir.glob("*.json")) if presets_dir.is_dir() else []
                 return self.send(200, json.dumps(names))
@@ -273,6 +291,12 @@ def main():
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self.send(400, '{"error":"bad request"}')
+
+            if flow and u.path.startswith("/flow/"):
+                r = flow.handle("POST", u.path, body)
+                if r:
+                    return self.send(r[0], json.dumps(r[1]))
+                return self.send(404, '{"error":"not found"}')
 
             if u.path == "/cancel":
                 result["code"] = 3
@@ -320,9 +344,16 @@ def main():
                         "unhide": [{"label": i["n"], "record_key": i["rk"],
                                     "reason": "Unticked in the picker"} for i in to_show]}
                 mp.save_json(args.out, plan)
-                self.send(200, json.dumps({"ok": True, "hide": len(to_hide), "show": len(to_show)}))
                 result["code"] = 0
                 result["summary"] = (len(to_hide), len(to_show))
+                if flow:
+                    if flow.phase != "idle":
+                        return self.send(409, '{"error":"Already applied - see the other page."}')
+                    print(f"\nSaved your choices: {len(to_hide)} to hide, {len(to_show)} to show "
+                          f"again -> {args.out}. Checking ...")
+                    flow.start_plan(args.out)
+                    return self.send(200, json.dumps({"ok": True, "flow": True}))
+                self.send(200, json.dumps({"ok": True, "hide": len(to_hide), "show": len(to_show)}))
                 done.set()
                 return
             return self.send(404, '{"error":"not found"}')
@@ -341,12 +372,32 @@ def main():
     if not args.no_browser:
         webbrowser.open(url)
 
-    try:
-        while not done.wait(0.5):
-            pass
-    except KeyboardInterrupt:
-        result["code"] = 3
-    server.shutdown()
+    if flow:
+        # done = cancelled in the picker or no changes; otherwise the flow decides
+        try:
+            while not done.wait(0.5):
+                if flow.done.is_set() or flow.idle():
+                    break
+        except KeyboardInterrupt:
+            if flow.phase == "running":
+                print("\nStopped while sending - check the result with  .\\demohider.ps1 -Publish")
+                flow.exit_code = 2
+            elif flow.exit_code is None:
+                flow.exit_code = 3
+        server.shutdown()
+        if not done.is_set():
+            if flow.exit_code is None:
+                flow.exit_code = 3
+            if not flow.job:   # a job already printed its own result
+                print("\n" + flow.final_message())
+            sys.exit(flow.exit_code)
+    else:
+        try:
+            while not done.wait(0.5):
+                pass
+        except KeyboardInterrupt:
+            result["code"] = 3
+        server.shutdown()
 
     code = result["code"]
     if code == 0:
@@ -438,7 +489,7 @@ nav button{width:auto}}
   <div class="row chips" id="chips"><span class="lbl">Quick select</span></div>
   <div class="row chips">
     <span class="lbl">Show</span>
-    <label class="opt"><input type="checkbox" class="wf" value="HomepageGrid" checked> List</label>
+    <label class="opt"><input type="checkbox" class="wf" value="HomepageGrid" checked> Main grid</label>
     <label class="opt"><input type="checkbox" class="wf" value="Form" checked> Form</label>
     <label class="opt"><input type="checkbox" class="wf" value="SubGrid" checked> Subgrid</label>
     <label class="opt"><input type="checkbox" id="onlyTicked"> Only ticked</label>
@@ -477,7 +528,7 @@ const checked = new Set(items.filter(i => i.h).map(i => i.k));
 const children = new Map();
 items.forEach(i => { if (i.p && byK.has(i.p)) { if (!children.has(i.p)) children.set(i.p, []); children.get(i.p).push(i); } });
 const tables = [...new Set(items.map(i => i.t))];
-const WL = {HomepageGrid: "List", Form: "Form", SubGrid: "Subgrid"};
+const WL = {HomepageGrid: "Main grid", Form: "Form", SubGrid: "Subgrid"};
 let current = "*", open = new Set();
 const $ = s => document.querySelector(s);
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -588,7 +639,7 @@ $("#saveSet").onclick = () => { const name = $("#setName").value.trim();
   api("/save-set", {name, checked: [...checked]}).then(r => { toast(`Saved set "${r.name}"`); loadSets(r.name); }).catch(err => toast(err.message)); };
 function finish(title, text) { document.body.innerHTML = `<div class="done"><h2>${title}</h2><p>${text}</p></div>`; }
 $("#apply").onclick = () => { $("#apply").disabled = true;
-  api("/apply", {checked: [...checked]}).then(r => r.changes === 0
+  api("/apply", {checked: [...checked]}).then(r => r.flow ? (location.href = "/flow?token=" + D.token) : r.changes === 0
     ? finish("No changes", "You can close this tab.")
     : finish("Choices saved ✓", `${r.hide} to hide, ${r.show} to show again.<br>Go back to the terminal to review and confirm with <b>Y</b>.<br><br>You can close this tab.`))
     .catch(err => { toast(err.message); $("#apply").disabled = false; }); };

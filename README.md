@@ -37,15 +37,17 @@ one line to it that says *"hide this button"*. DemoHider writes those lines for 
                   (built once per environment)
  2. CHOOSE        Tick the buttons to hide on a page in your browser
                   (or, optionally, write a reusable "preset" file)
- 3. RUN           DemoHider checks everything, shows you the list, asks Y/N,
-                  updates a solution called "DemoHider" and imports it
- 4. RESULT        Press Ctrl+F5 in the app - the buttons are gone
- 5. UNDO          One command brings them back
+ 3. CONFIRM       DemoHider checks everything and shows the list and the
+                  environment URL in your browser - click "Confirm and send"
+ 4. SEND          It updates a solution called "DemoHider", imports and
+                  publishes it (twice), and shows the progress on the page
+ 5. RESULT        Press Ctrl+F5 in the app - the buttons are gone
+ 6. UNDO          One click (or one command) brings them back
 ```
 
 **Good to know**
 
-- Nothing changes until you answer **Y**.
+- Nothing changes until you click **Confirm and send**.
 - Every change is backed up and can be undone.
 - DemoHider only ever removes hides **it** created – never anyone else's customizations.
 - A button hidden on a table is hidden in **every app** that uses that table in that environment.
@@ -108,6 +110,8 @@ DemoHider\
     build_catalog.py
     make_plan.py
     picker_server.py     <- the tick-box page
+    flow_server.py       <- the confirmation and progress page
+    sender.py            <- update files, pack, import, publish (two rounds)
     hide_engine.py
     publish_tables.py
   presets\
@@ -294,15 +298,15 @@ Your browser opens the DemoHider page. If it doesn't, copy the link the terminal
 | Part of the page | What it does |
 |---|---|
 | **Tables** (left) | Pick one table, or **All tables** |
-| **Sections** | Each table is split into **List** (the main list of records), **Form** (inside a record) and **Subgrid** (a list shown inside a form) |
+| **Sections** | Each table is split into **Main grid** (the main list of records), **Form** (inside a record) and **Subgrid** (a list shown inside a form) |
 | **Search** (top) | Type part of a button's name, e.g. `report`, `excel`, `flow` |
 | **Quick select** | One click ticks a whole group – Reports, Templates, Flows & workflows, Email a Link, Visualize this view, Marketing, Follow, Mail Merge, Power Pages – on the tables and places shown |
-| **Show** | Untick List / Form / Subgrid to hide those sections. **Only ticked** shows just your choices. **Buttons not shown in modern apps** also lists buttons whose rules mean they never appear in model-driven apps (e.g. Run Workflow, Mail Merge) – hidden from the list by default because hiding them changes nothing |
+| **Show** | Untick Main grid / Form / Subgrid to hide those sections. **Only ticked** shows just your choices. **Buttons not shown in modern apps** also lists buttons whose rules mean they never appear in model-driven apps (e.g. Run Workflow, Mail Merge) – hidden from the list by default because hiding them changes nothing |
 | **tick it on every table** | When switched on, ticking a button ticks the same button on every table (same place) |
 | **▸ items in this menu** | Some buttons are menus. Ticking the menu hides everything in it |
 | Labels | **will hide** = hidden when you apply · **hidden** = already hidden · **will show** = comes back when you apply · **hidden with its menu** = inside a ticked menu (no separate action) · **not in modern apps** = never shown on screen anyway |
 | Header | The environment name **and URL** – check it is the one you mean |
-| Bottom bar | The counter shows how many buttons will be hidden / shown. **Apply** saves your choice |
+| Bottom bar | The counter shows how many buttons will be hidden / shown. **Apply** checks your choice and asks you to confirm (section 7.4) |
 
 Each button shows its name and, underneath in grey, its short internal name.
 
@@ -311,23 +315,63 @@ Each button shows its name and, underneath in grey, its short internal name.
 1. Click **All tables** on the left.
 2. Click **Reports** and **Flows & workflows** under *Quick select*.
 3. Tick anything else you want gone (use the search box to find it).
-4. Click **Apply**. The page says *Choices saved* – you can close the tab.
-5. Back in the terminal you see the list and the question
-   `Apply these … change(s) to https://…? (Y/N)` – check the URL, type **Y** and press **Enter**.
-6. Wait for **Done! Imported and published (confirmed).** (2–10 minutes). Then wait a minute and check in a
-   **new** InPrivate/Incognito window. See *Sending to Dynamics* (section 9.2) for what happens in this step.
+4. Click **Apply**. The same tab checks your choice and shows the **confirmation page** (7.4).
+5. Check the URL in the blue box, then click **Confirm and send**.
+6. Watch the progress until it says **Done!** (usually 5–20 minutes). Then wait a minute and check in a
+   **new** InPrivate/Incognito window.
 
-### 7.4 Bring buttons back
+### 7.4 Confirm and watch the progress
+
+After **Apply** (and for every other command – presets, `-Undo`, `-UnhideAll`, `-Publish`, `-Send`)
+the browser shows:
+
+**1. The confirmation page**
+
+- **You are about to change:** the environment URL and name. Make sure it is the one you mean.
+- The counts (*to hide* / *to show again*) and every button, with its table and place
+  (Main grid / Form / Subgrid).
+- **Cancel** = nothing is changed. **Confirm and send** = go ahead.
+- If any button is **BLOCKED**, the reason is shown in red, nothing is changed and there is
+  only a **Close** button.
+
+**2. The progress page** – each step gets a tick when it finishes, with how long it took:
+
+```
+✓ Updating the solution files
+✓ Final safety check
+✓ Round 1 of 2 - 1/3 Packing the solution
+◌ Round 1 of 2 - 2/3 Importing into Dynamics (a few minutes)    2 min 10 s
+○ Round 1 of 2 - 3/3 Publishing the changed tables
+○ Waiting before round 2
+○ Round 2 of 2 - ...
+```
+
+**Show details** opens the full output (the same as in the terminal). Closing the tab does **not**
+stop the sending – the terminal keeps going and shows the same progress.
+
+**3. The result**, in green (**Done!**), yellow (round 2 did not finish – round 1 was sent) or red
+(**NOT LIVE YET**), with these buttons:
+
+| Button | What it does |
+|---|---|
+| **Publish again** | Publishes this run's tables again – try this first if the change doesn't show |
+| **Send again** | Packs, imports and publishes this run again (two rounds) |
+| **Undo this change** | Puts the buttons back to how they were before this run and sends that (asks first) |
+| **Close** | Ends DemoHider. The terminal shows the final result |
+
+> Prefer the old way, typing **Y/N** in the terminal? Add **`-NoBrowser`** to any command.
+
+### 7.5 Bring buttons back
 
 Run the same command again. Buttons DemoHider has hidden are **already ticked**.
 
-- **Untick** the ones you want back → **Apply** → **Y**.
-- To bring back everything: click **Untick all** → **Apply** → **Y**
+- **Untick** the ones you want back → **Apply** → **Confirm and send**.
+- To bring back everything: click **Untick all** → **Apply** → **Confirm and send**
   (or use `-UnhideAll`, section 10).
 
 You can hide some buttons and bring others back in the same go.
 
-### 7.5 Save your choice for the next demo
+### 7.6 Save your choice for the next demo
 
 1. Tick the buttons.
 2. Type a name in **Name for this set** (letters, numbers, `-` or `_`, no spaces), e.g. `customer-abc`.
@@ -336,7 +380,7 @@ You can hide some buttons and bring others back in the same go.
 Next time, choose it in **Load a saved set…** – its buttons are ticked for you. Saved sets also
 work in other environments, and with `-Preset` (section 9).
 
-### 7.6 Notes
+### 7.7 Notes
 
 - **Environment check:** before changing anything, DemoHider compares the environment `pac` is
   signed in to with the catalogue's environment. If they differ it stops – see section 11 to switch.
@@ -346,8 +390,8 @@ work in other environments, and with `-Preset` (section 9).
   Hides made by anyone else are never shown as restorable and are never touched.
 - The page lists the buttons that exist on each table – including some your users only see in certain
   situations (e.g. after selecting a record). Hiding those is harmless.
-- **Cancel** closes the page without changing anything.
-- If you change your mind after Apply, answer **N** in the terminal – nothing is changed.
+- **Cancel** (on the tick-box page or the confirmation page) changes nothing.
+- If you change your mind after Apply, click **Cancel** on the confirmation page – nothing is changed.
 
 ---
 
@@ -391,13 +435,13 @@ powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -Find excel -Table cont
 
 ```
 BUTTON (use this in presets)     NAME                       WHERE         TABLES
-ExportSelectedToExcel            Export Selected To Excel   list          contact
-ExportToExcel                    Export To Excel            list          contact
-ImportDataFromExcel              Import From Excel          list          contact
+ExportSelectedToExcel            Export Selected To Excel   main grid     contact
+ExportToExcel                    Export To Excel            main grid     contact
+ImportDataFromExcel              Import From Excel          main grid     contact
 ```
 
 - Use the value in the **BUTTON** column in your preset.
-- **WHERE** tells you where it appears: `list` (the main list of records), `form`
+- **WHERE** tells you where it appears: `main grid` (the main list of records), `form`
   (inside a record), `subgrid` (a list shown inside a form).
 - Rows marked `[application]` are global buttons – see 8.6.
 - Search with a word from the button's name on screen (e.g. `report`, `template`, `flow`, `share`).
@@ -417,7 +461,7 @@ ImportDataFromExcel              Import From Excel          list          contac
     {
       "description": "WHY THESE BUTTONS ARE HIDDEN",
       "tables": ["account", "contact", "lead", "opportunity"],
-      "where": ["list", "form", "subgrid"],
+      "where": ["main grid", "form", "subgrid"],
       "buttons": ["RunReport", "Reports", "WordTemplate", "DocumentTemplate"]
     }
   ],
@@ -436,7 +480,7 @@ ImportDataFromExcel              Import From Excel          list          contac
 | `"rules"` | A list of rules. A button is hidden if **any** rule matches | Each rule is inside `{ }` |
 | `"description"` (in a rule) | Why – shown in the preview | Any text |
 | `"tables"` | Which tables | Logical names in lowercase, or `"*"` for every table in the catalogue |
-| `"where"` | Which places | Any of `"list"`, `"form"`, `"subgrid"`. Leave the line out for all three |
+| `"where"` | Which places | Any of `"main grid"`, `"form"`, `"subgrid"`. Leave the line out for all three. (`"list"` still works and means the main grid) |
 | `"buttons"` | Which buttons | Short names from `-Find` |
 | `"keep"` | Exceptions that are **never** hidden | Written like a rule; `[]` means none |
 
@@ -468,7 +512,7 @@ ImportDataFromExcel              Import From Excel          list          contac
 {
   "description": "Email a Link only clutters the lists",
   "tables": ["account", "contact"],
-  "where": ["list"],
+  "where": ["main grid"],
   "buttons": ["Send"]
 }
 ```
@@ -531,7 +575,7 @@ a global button on **all tables at once**:
 {
   "description": "Email a Link on every list",
   "scope": "application",
-  "where": ["list"],
+  "where": ["main grid"],
   "buttons": ["Send"]
 }
 ```
@@ -587,26 +631,19 @@ powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Prese
 ```
 ==> Building the list from preset 'sales-demo'
 135 button(s) to hide:
-  account   form     9
-  account   list     13
+  account   form       9
+  account   main grid  13
   ...
-==> Step 1 of 4 - Checking (nothing is changed yet)
-
-What will happen:
-  HIDE     account      Form          Run Report (Reports)
-  HIDE     contact      HomepageGrid  Word Template
-  ... and 95 more
-  Full details: ...\runs\20261026-101500-sales-demo\preview.md
-
-Apply these 135 change(s) to Dynamics? (Y/N):
+==> Opening the confirmation page in your browser
 ```
 
-- **HomepageGrid** = the main list, **Form** = inside a record, **SubGrid** = a list inside a form.
-- For the full list, open the `preview.md` it names (in VS Code: right-click → **Open Preview**).
-- Type **Y** and press **Enter** to continue, or **N** to cancel (nothing is changed).
+- The browser shows the confirmation page: the environment URL, and every button with its table and
+  place (**Main grid** = the main list, **Form** = inside a record, **Subgrid** = a list inside a form).
+  Click **Confirm and send**, or **Cancel** (nothing is changed). See section 7.4.
+- The full details are also in the `preview.md` the page names (in VS Code: right-click → **Open Preview**).
 
-It then updates the files, runs a safety check, and **sends the change to Dynamics in three steps –
-twice**. In testing, the app only showed the change after a second pack, import and publish, so the
+After you confirm, it updates the files, runs a safety check, and **sends the change to Dynamics in
+three steps – twice**. The progress page and the terminal both show each step. In testing, the app only showed the change after a second pack, import and publish, so the
 runner always does two rounds for the same (latest) run:
 
 ```
@@ -619,14 +656,14 @@ Round 1 done. Waiting 60 seconds before round 2 ...
 ==> Round 2 of 2 - 3/3 Publishing              publishes, waits 30 seconds, publishes again
 ```
 
-Every step shows the run name, e.g. `(run: 20261027-175030-picked)`, so you can see it is the latest run.
+The page and the terminal show the run name (e.g. `run 20261027-175030-picked`), so you can see it is the latest run.
 Retries happen automatically if the connection drops or Dynamics is busy (HTTP 429).
 Both rounds take about twice as long as one, so leave the window open.
 
 Wait for:
 
 ```
-Done! Imported and published twice (2 rounds, confirmed).
+Done! Imported and published twice (2 rounds).
 ```
 
 Then wait a minute and check in a **new** InPrivate/Incognito window.
@@ -636,10 +673,11 @@ Then wait a minute and check in a **new** InPrivate/Incognito window.
 | `-OneRound` | Send only once (faster, but the app may not update) |
 | `-RoundWait 120` | Wait 120 seconds between the rounds instead of 60 |
 
-If round 1 works but round 2 fails, the runner says so in yellow and suggests `.\demohider.ps1 -Send`.
+If round 1 works but round 2 fails, the result is shown in yellow – click **Send again** if the
+buttons haven't changed after a few minutes.
 
-**If it shows `NOT LIVE YET`** (red box), the files are updated but the app will not show the change
-until it is published. Finish it with:
+**If it shows `NOT LIVE YET`** (red), the files are updated but the app will not show the change
+until it is published. Click **Publish again** (or **Send again**) on the page, or, after closing it:
 
 | Command | What it does |
 |---|---|
@@ -675,7 +713,9 @@ preset and run it again – only the new buttons are hidden.
 | Undo **only the last** change | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -Undo` |
 | Bring back **everything** DemoHider has hidden (reset after a demo) | `powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName <EnvName> -UnhideAll` |
 
-Each shows what will come back and asks **Y/N**, like hiding.
+Each opens the confirmation page showing what will come back – click **Confirm and send** (for
+`-Undo`: **Confirm undo**). Right after a change, the **Undo this change** button on the result page
+does the same as `-Undo`.
 Then press **Ctrl+F5** in the app.
 
 **To show just one or two buttons again:** remove them from the preset, save it, and use
@@ -773,15 +813,16 @@ Replace `<...>` with your values. `DH` below is short for
 | Publish the last run again | `DH -EnvName <EnvName> -Publish` |
 | Pack + import + publish the last run again | `DH -EnvName <EnvName> -Send` |
 | Bring back everything | `DH -EnvName <EnvName> -UnhideAll` |
+| Confirm with Y/N in the terminal instead of the browser | add `-NoBrowser` to any command |
 | Other environment | add `-Solution solutions\DemoHider-<EnvName>` to every `DH` command |
 
 ### A typical demo, start to finish
 
 ```powershell
 pac org who                                                                          # 1. right environment?
-powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Pick   # 2. tick, Apply, answer Y
+powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -Pick   # 2. tick, Apply, Confirm and send
 #    ...Ctrl+F5, run the demo...
-powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -UnhideAll   # 3. reset, answer Y
+powershell -ExecutionPolicy Bypass -File .\demohider.ps1 -EnvName CUS-Dev -UnhideAll   # 3. reset, Confirm and send
 ```
 
 ---
