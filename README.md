@@ -314,7 +314,8 @@ Each button shows its name and, underneath in grey, its short internal name.
 4. Click **Apply**. The page says *Choices saved* – you can close the tab.
 5. Back in the terminal you see the list and the question
    `Apply these … change(s) to https://…? (Y/N)` – check the URL, type **Y** and press **Enter**.
-6. Wait for **Done!** (2–10 minutes), then press **Ctrl+F5** in the app.
+6. Wait for **Done! Imported and published (confirmed).** (2–10 minutes). Then wait a minute and check in a
+   **new** InPrivate/Incognito window. See *Sending to Dynamics* (section 9.2) for what happens in this step.
 
 ### 7.4 Bring buttons back
 
@@ -604,12 +605,54 @@ Apply these 135 change(s) to Dynamics? (Y/N):
 - For the full list, open the `preview.md` it names (in VS Code: right-click → **Open Preview**).
 - Type **Y** and press **Enter** to continue, or **N** to cancel (nothing is changed).
 
-It then updates the files, runs a safety check, imports into Dynamics and publishes the
-changed tables. This takes **2–10 minutes**. Wait for:
+It then updates the files, runs a safety check, and **sends the change to Dynamics in three steps –
+twice**. In testing, the app only showed the change after a second pack, import and publish, so the
+runner always does two rounds for the same (latest) run:
 
 ```
-Done! In the app press Ctrl+F5 to see the result.
+==> Round 1 of 2 - 1/3 Packing the solution    zips the DemoHider folder
+==> Round 1 of 2 - 2/3 Importing into Dynamics uploads it (a few minutes - leave the window open)
+==> Round 1 of 2 - 3/3 Publishing              publishes the changed tables of this run
+Round 1 done. Waiting 60 seconds before round 2 ...
+==> Round 2 of 2 - 1/3 Packing the solution    the same three steps again,
+==> Round 2 of 2 - 2/3 Importing into Dynamics for the same run
+==> Round 2 of 2 - 3/3 Publishing              publishes, waits 30 seconds, publishes again
 ```
+
+Every step shows the run name, e.g. `(run: 20261027-175030-picked)`, so you can see it is the latest run.
+Retries happen automatically if the connection drops or Dynamics is busy (HTTP 429).
+Both rounds take about twice as long as one, so leave the window open.
+
+Wait for:
+
+```
+Done! Imported and published twice (2 rounds, confirmed).
+```
+
+Then wait a minute and check in a **new** InPrivate/Incognito window.
+
+| Option | What it does |
+|---|---|
+| `-OneRound` | Send only once (faster, but the app may not update) |
+| `-RoundWait 120` | Wait 120 seconds between the rounds instead of 60 |
+
+If round 1 works but round 2 fails, the runner says so in yellow and suggests `.\demohider.ps1 -Send`.
+
+**If it shows `NOT LIVE YET`** (red box), the files are updated but the app will not show the change
+until it is published. Finish it with:
+
+| Command | What it does |
+|---|---|
+| `.\demohider.ps1 -Publish` | Publishes the last run again – fast, try this first |
+| `.\demohider.ps1 -Send` | Packs, imports and publishes the last run again (two rounds) |
+
+Use the same commands if the runner said *Done!* but the change still isn't visible after a few minutes.
+You never need to type `pac` or `publish_tables.py` commands yourself.
+
+> If you do run `publish_tables.py` by hand, give it the real run folder:
+> `python scripts\publish_tables.py --run ".\runs\20261027-175030-picked"`.
+> `$RunDir` only exists inside the runner, so `--run $RunDir` typed in the terminal gives
+> *"argument --run: expected one argument"*.
 
 ### 9.3 Check the result
 
@@ -698,7 +741,8 @@ pac org who                        # confirm
 | The tick-box page doesn't open | Copy the `http://127.0.0.1:...` link from the terminal into your browser. Keep the terminal open. |
 | A table is missing on the tick-box page | Add it to the catalogue (5.1 with `--tables`) and to the solution (6.3). |
 | A table times out while building the catalogue | `--retry-failed`, and add `--split` if needed (5.3). |
-| Import or publish drops the connection | The import usually still finished. Wait a few minutes and press Ctrl+F5. If nothing changed: `python scripts\publish_tables.py --run runs\<newest-run-folder>` |
+| `NOT LIVE YET` | The change is in your files but not published. Run `-Publish`; if that doesn't help, `-Send` (section 9.2). |
+| Said *Done!* but the change isn't visible after a few minutes | Run `-Publish` (publishes the last run again). Busy environments sometimes need a second publish. |
 | `These are different environments - nothing was changed` | `pac` is signed in to another environment. Run `pac auth list`, then `pac auth select --name <EnvName>`, and run the command again. |
 | Buttons still visible after Done | Press **Ctrl+F5**, or open the app in a private window. Check that you are in the right environment (`pac org who`). |
 | One particular button won't hide | It may be a different button with a similar name (e.g. form vs list – check `-Find`), or a **modern command** (e.g. *Open Dashboards*), which DemoHider cannot hide. |
@@ -726,6 +770,8 @@ Replace `<...>` with your values. `DH` below is short for
 | Hide with a preset | `DH -EnvName <EnvName> -Preset presets\<file>.json` |
 | Unhide a preset | `DH -EnvName <EnvName> -Preset presets\<file>.json -Unhide` |
 | Undo last change | `DH -EnvName <EnvName> -Undo` |
+| Publish the last run again | `DH -EnvName <EnvName> -Publish` |
+| Pack + import + publish the last run again | `DH -EnvName <EnvName> -Send` |
 | Bring back everything | `DH -EnvName <EnvName> -UnhideAll` |
 | Other environment | add `-Solution solutions\DemoHider-<EnvName>` to every `DH` command |
 

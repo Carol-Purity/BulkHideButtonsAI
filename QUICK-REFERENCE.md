@@ -28,11 +28,13 @@ If Windows blocks the script, start each command with
 | Tick buttons in Excel | `.\demohider.ps1 -NewPicker` → tick `x` in Excel → `.\demohider.ps1 -Picker pickers\CUS-Dev.csv` |
 | Find a button's short name | `.\demohider.ps1 -Find report` (add `-Table contact`) |
 | Undo the last change | `.\demohider.ps1 -Undo` |
+| Change not showing / run said NOT LIVE YET | `.\demohider.ps1 -Publish` (then `-Send` if needed) |
 | Bring back everything | `.\demohider.ps1 -UnhideAll` |
 | Refresh catalogue after an update (no download) | `python scripts\build_catalog.py --env-url <url> --env-name <name> --reparse` |
 
 Every command first checks that `pac` is connected to the catalogue's environment, shows the list, and asks **Y/N** before changing anything.
-After it says **Done**, press **Ctrl+F5** in the app.
+It packs, imports and publishes **twice** (two rounds for the same latest run, 60 s apart, with retries). After **Done! … (2 rounds, confirmed)**, wait a minute and check in a new InPrivate window.
+Add `-OneRound` to send only once, or `-RoundWait 120` to wait longer between rounds.
 
 ## Writing a preset
 

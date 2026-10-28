@@ -27,8 +27,18 @@
       .\demohider.ps1 -UnhideAll     bring back everything DemoHider has hidden
       .\demohider.ps1 -Undo          undo only the last change
 
+  CHANGE NOT SHOWING / RUN INTERRUPTED:
+      .\demohider.ps1 -Publish       publish the last run again (fast)
+      .\demohider.ps1 -Send          pack + import + publish the last run again
+
   A ready-made plan file:
       .\demohider.ps1 -Plan plans\contact-grid-test.json
+
+  SENDING: every change is sent in TWO rounds automatically
+  (pack -> import -> publish, wait 60 s, pack -> import -> publish again),
+  always for the same, latest run.
+      -OneRound        send only once (faster, but the app may not update)
+      -RoundWait 120   seconds to wait between the rounds (default 60)
 
   Optional:  -EnvName CUS-Dev   -Solution solutions\DemoHider
 #>
@@ -40,12 +50,17 @@ param(
     [switch]$Unhide,
     [switch]$UnhideAll,
     [switch]$Undo,
+    [switch]$Publish,
+    [switch]$Send,
     [switch]$NewPicker,
     [string]$Find,
     [string]$Table,
     [string]$EnvName = "CUS-Dev",
-    [string]$Solution = "solutions\DemoHider"
+    [string]$Solution = "solutions\DemoHider",
+    [switch]$OneRound,
+    [int]$RoundWait = 60
 )
+$SendWarning = $false
 
 Set-Location $PSScriptRoot
 $env:DEMOHIDER_RUNNER = "1"
@@ -100,25 +115,99 @@ function Confirm-Environment {
     Write-Host "  OK - same environment." -ForegroundColor Green
 }
 
-function Send-ToDynamics($RunDir) {
+function Show-NotLive($why, $RunDir) {
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host " NOT LIVE YET - $why" -ForegroundColor Red
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host "Your solution files are updated, but the app will not show the change until"
+    Write-Host "it is published. Finish it with ONE of these:"
+    Write-Host "  .\demohider.ps1 -Publish     (publish again - try this first)" -ForegroundColor Yellow
+    Write-Host "  .\demohider.ps1 -Send        (pack + import + publish again)" -ForegroundColor Yellow
+    Write-Host "Run folder: $RunDir"
+    exit 1
+}
+
+function Publish-Run($RunDir, [switch]$NoConfirm, [switch]$Soft, [string]$Round = "") {
+    # Publish only the changed tables of THIS run, with retries (and a
+    # confirmation publish unless -NoConfirm).
+    # -Soft: on failure, warn and return $false instead of stopping.
+    Write-Step "Publishing the changed tables of run $(Split-Path $RunDir -Leaf)"
+    $cmd = @("scripts\publish_tables.py", "--run", $RunDir)
+    if ($NoConfirm) { $cmd += "--no-confirm" }
+    if ($Round) { $cmd += @("--round", $Round) }
+    python @cmd | Out-Host
+    $code = $LASTEXITCODE
+    if ($code -eq 0) {
+        Write-Host "  Published." -ForegroundColor Green
+        return $true
+    }
+    if ($Soft) { return $false }
+    if ($code -eq 2) { Show-NotLive "the connection to Dynamics kept dropping while publishing" $RunDir }
+    Show-NotLive "publishing was rejected (see the message above)" $RunDir
+}
+
+function Send-Round($RunDir, [int]$Number, [int]$Of, [switch]$Soft) {
+    # One round of the three commands:  pack  ->  import  ->  publish
+    # Always packs the CURRENT solution folder (which holds this run's changes)
+    # and publishes the tables of THIS run folder.
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $zip = "solutions\DemoHider_$stamp.zip"
+    $tag = "Round $Number of $Of"
 
-    Write-Step "Packing the solution"
-    pac solution pack --zipfile $zip --folder $Solution --packagetype Unmanaged
-    if ($LASTEXITCODE -ne 0) { Stop-With "Packing failed - see the message above." }
-
-    Write-Step "Importing into Dynamics (this takes a few minutes)"
-    pac solution import --path $zip
-    if ($LASTEXITCODE -ne 0) { Stop-With "Import failed - see the message above." }
-
-    Write-Step "Publishing only the tables that changed"
-    python scripts\publish_tables.py --run $RunDir
-    if ($LASTEXITCODE -eq 2) {
-        Write-Host "The import worked; publishing may still be finishing in Dynamics." -ForegroundColor Yellow
-    } elseif ($LASTEXITCODE -ne 0) {
-        Stop-With "Import worked but publishing failed. Publish from make.powerapps.com > Solutions > DemoHider > Publish all customizations."
+    Write-Step "$tag - 1/3 Packing the solution  (run: $(Split-Path $RunDir -Leaf))"
+    pac solution pack --zipfile $zip --folder $Solution --packagetype Unmanaged | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        if ($Soft) { return $false }
+        Stop-With "Packing failed - see the message above. Nothing was sent to Dynamics."
     }
+
+    Write-Step "$tag - 2/3 Importing into Dynamics (this takes a few minutes - leave this window open)"
+    pac solution import --path $zip | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        if ($Soft) { return $false }
+        Show-NotLive "the import did not finish (see the message above)" $RunDir
+    }
+    Write-Host "  Imported." -ForegroundColor Green
+
+    Write-Step "$tag - 3/3 Publishing"
+    # Round 1 skips the confirmation publish when a second round follows
+    # (round 2 publishes again anyway).
+    $noConfirm = ($Number -lt $Of)
+    return (Publish-Run $RunDir -NoConfirm:$noConfirm -Soft:$Soft -Round "$Number")
+}
+
+function Send-ToDynamics($RunDir) {
+    # Round 1: pack -> import -> publish.
+    # Round 2 (automatic, unless -OneRound): wait, then the same three commands
+    # again for the same run. In our tests the app only showed the change after
+    # this second round.
+    $rounds = if ($OneRound) { 1 } else { 2 }
+    $null = Send-Round $RunDir 1 $rounds
+    if ($rounds -eq 1) { return }
+
+    Write-Host ""
+    Write-Host "Round 1 done. Waiting $RoundWait seconds before round 2 (makes the change stick in the app) ..." -ForegroundColor Yellow
+    Start-Sleep -Seconds $RoundWait
+
+    $ok = Send-Round $RunDir 2 2 -Soft
+    if (-not $ok) {
+        Write-Host ""
+        Write-Host "Round 2 did not complete (see the message above). Round 1 was sent." -ForegroundColor Yellow
+        Write-Host "If the buttons have not changed in a few minutes, run:  .\demohider.ps1 -Send" -ForegroundColor Yellow
+        $script:SendWarning = $true
+    }
+}
+
+function Get-LastSentRun {
+    # newest run that changed something (applied, or rolled back by -Undo)
+    foreach ($r in Get-Runs) {
+        $f = Join-Path $r.FullName "run.json"
+        if (-not (Test-Path $f)) { continue }
+        $info = Get-Content $f -Raw | ConvertFrom-Json
+        if ($info.status -eq "applied" -or $info.status -eq "rolled_back") { return $r }
+    }
+    return $null
 }
 
 Need-File $Catalog "Catalogue"
@@ -148,6 +237,20 @@ if ($NewPicker) {
     exit 0
 }
 
+# ------------------------------------------- finish / repeat sending the last run
+if ($Publish -or $Send) {
+    $last = Get-LastSentRun
+    if (-not $last) { Stop-With "No previous run found to publish." }
+    Need-File $Solution "Solution folder"
+    Confirm-Environment
+    Write-Host ""
+    Write-Host "Last run: $($last.Name)"
+    if ($Send) { Send-ToDynamics $last.FullName } else { $null = Publish-Run $last.FullName }
+    Write-Host ""
+    Write-Host "Done! Wait a minute, then check in a NEW InPrivate/Incognito window." -ForegroundColor Green
+    exit 0
+}
+
 # ------------------------------------------------------------------ undo last run
 if ($Undo) {
     $last = $null
@@ -165,7 +268,7 @@ if ($Undo) {
 
     Send-ToDynamics $last.FullName
     Write-Host ""
-    Write-Host "Done. In the app press Ctrl+F5 - the buttons are back." -ForegroundColor Green
+    Write-Host "Done! Imported and published. Wait a minute, then check in a NEW InPrivate/Incognito window - the buttons are back." -ForegroundColor Green
     exit 0
 }
 
@@ -263,5 +366,9 @@ Write-Step "Step 4 of 4 - Sending to Dynamics"
 Send-ToDynamics $run.FullName
 
 Write-Host ""
-Write-Host "Done! In the app press Ctrl+F5 to see the result." -ForegroundColor Green
+if ($SendWarning) { Write-Host "Done (round 1 only - see the warning above)." -ForegroundColor Yellow }
+elseif ($OneRound) { Write-Host "Done! Imported and published (one round)." -ForegroundColor Green }
+else { Write-Host "Done! Imported and published twice (2 rounds, confirmed)." -ForegroundColor Green }
+Write-Host "Wait a minute, then check in a NEW InPrivate/Incognito window."
+Write-Host "Not showing after a few minutes?  .\demohider.ps1 -Publish"
 Write-Host "Undo this change:  .\demohider.ps1 -Undo      Reset everything:  .\demohider.ps1 -UnhideAll"
