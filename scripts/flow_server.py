@@ -63,8 +63,9 @@ def items_from_run(run, kind):
 
 
 class Flow:
-    def __init__(self, catalog, solution, rounds=2, round_wait=60):
+    def __init__(self, catalog, solution, rounds=2, round_wait=60, full=False):
         self.catalog, self.solution = str(catalog), str(solution)
+        self.full = full
         self.rounds, self.round_wait = rounds, round_wait
         cat = json.loads(Path(catalog).read_text(encoding="utf-8-sig"))
         self.env = cat.get("environment_name", "")
@@ -131,7 +132,7 @@ class Flow:
         else:
             target = lambda: sender.do_send(                                 # noqa: E731
                 job, self.run_dir, self.catalog, self.solution, self.rounds, self.round_wait,
-                apply=(what == "change"), undo=(what == "undo"))
+                apply=(what == "change"), undo=(what == "undo"), full=self.full)
 
         def work():
             try:
@@ -262,11 +263,13 @@ def main():
     ap.add_argument("--round-wait", type=int, default=60)
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--full", action="store_true",
+                    help="send the whole solution, not only the changed tables")
     a = ap.parse_args()
     if not a.plan and not (a.run and a.action):
         ap.error("give --plan, or --run with --action")
 
-    flow = Flow(a.catalog, a.solution, max(1, a.rounds), a.round_wait)
+    flow = Flow(a.catalog, a.solution, max(1, a.rounds), a.round_wait, a.full)
     if a.plan:
         flow.start_plan(a.plan)
     else:

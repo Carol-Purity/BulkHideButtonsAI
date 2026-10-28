@@ -35,11 +35,14 @@
   A ready-made plan file:
       .\demohider.ps1 -Plan plans\contact-grid-test.json
 
-  SENDING: every change is sent in TWO rounds automatically
+  SENDING: only the tables a change touches are packed and imported, and
+  every change is sent in TWO rounds automatically
   (pack -> import -> publish, wait 60 s, pack -> import -> publish again),
   always for the same, latest run.
       -OneRound        send only once (faster, but the app may not update)
       -RoundWait 120   seconds to wait between the rounds (default 60)
+      -FullSolution    import the whole DemoHider solution instead of only the
+                       tables this change touched (slower; use if asked to)
 
   CONFIRM IN THE TERMINAL instead of the browser (Y/N, like before):
       -NoBrowser       e.g.  .\demohider.ps1 -Preset presets\sales-demo.json -NoBrowser
@@ -63,6 +66,7 @@ param(
     [string]$Solution = "solutions\DemoHider",
     [switch]$OneRound,
     [switch]$NoBrowser,
+    [switch]$FullSolution,
     [int]$RoundWait = 60
 )
 
@@ -121,6 +125,7 @@ function Confirm-Environment {
 
 $Rounds = if ($OneRound) { 1 } else { 2 }
 $SendArgs = @("--rounds", $Rounds, "--round-wait", $RoundWait)
+if ($FullSolution) { $SendArgs += "--full" }
 
 function Show-Result($code, $RunDir) {
     # Final message in the terminal (the browser page shows the same result).

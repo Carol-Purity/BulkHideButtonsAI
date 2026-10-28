@@ -212,6 +212,8 @@ def main():
                     help="After Apply: check, confirm and send in the same browser tab")
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--round-wait", type=int, default=60)
+    ap.add_argument("--full", action="store_true",
+                    help="send the whole solution, not only the changed tables")
     args = ap.parse_args()
     if args.flow and not args.solution:
         ap.error("--flow needs --solution")
@@ -226,7 +228,7 @@ def main():
     result = {"code": None}
     done = threading.Event()
     flow = flow_server.Flow(args.catalog, args.solution, max(1, args.rounds),
-                            args.round_wait) if args.flow else None
+                            args.round_wait, args.full) if args.flow else None
 
     page = (PAGE.replace("__DATA__", json.dumps({
         "env": env, "url": cat.get("environment_url", ""), "items": items, "groups": GROUPS,

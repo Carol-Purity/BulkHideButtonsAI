@@ -9,6 +9,11 @@ Runs the steps after you have confirmed a change, in this order:
   Round 1   pack -> import -> publish            pac + publish_tables.py
   Round 2   the same three again, same run       (makes the change show in the app)
 
+Only the tables the run changed are packed and imported (a trimmed copy of the
+solution in runs\\<run>\\send-solution) - much faster than the whole solution.
+Use --full to send the whole solution instead. If the trimmed copy can't be
+made or packed, the whole solution is sent automatically.
+
 Used by the browser page (flow_server.py) and by demohider.ps1 -NoBrowser.
 You normally never run it yourself, but you can:
 
@@ -34,6 +39,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+import partial_solution  # noqa: E402
 
 OK, NOT_LIVE, STOPPED, ROUND2_FAILED = 0, 2, 1, 5
 
@@ -169,7 +176,43 @@ def build_send(job, rounds, apply=False, undo=False):
         job.add_step(f"publish{r}", f"{tag} - 3/3 Publishing the changed tables")
 
 
-def do_send(job, run_dir, catalog, solution, rounds=2, round_wait=60, apply=False, undo=False):
+def run_tables(run_dir):
+    """(tables, uses_application_ribbon) changed by a run."""
+    tables, app = set(), False
+    for i in read_run(run_dir).get("items", []):
+        if i.get("status") not in ("hide", "unhide"):
+            continue
+        if i.get("scope") == "application":
+            app = True
+        elif i.get("table"):
+            tables.add(i["table"].lower())
+    return sorted(tables), app
+
+
+def choose_folder(job, run_dir, solution, full):
+    """The folder to pack: a trimmed copy with only the changed tables, or the full solution."""
+    if full:
+        job.write("Sending the whole solution (-FullSolution).")
+        return solution, "whole solution"
+    tables, app = run_tables(run_dir)
+    if not tables:
+        job.write("This run only changes the Application Ribbon - sending the whole solution.")
+        return solution, "whole solution"
+    out = Path(run_dir) / "send-solution"
+    try:
+        info = partial_solution.build(solution, out, tables)
+    except partial_solution.PartialError as e:
+        job.write(f"Could not make the smaller copy ({e}) - sending the whole solution instead.")
+        return solution, "whole solution"
+    job.write(f"Sending only the changed table(s): {', '.join(info['tables'])}"
+              + (" + Application Ribbon" if app else ""))
+    if info["left_out"]:
+        job.write(f"  (left out of this import, unchanged in Dynamics: {', '.join(info['left_out'])})")
+    return str(out), ", ".join(info["tables"])
+
+
+def do_send(job, run_dir, catalog, solution, rounds=2, round_wait=60, apply=False, undo=False,
+            full=False):
     """Apply/undo (optional), check, then send in `rounds` rounds. Sets job result."""
     run_dir = str(run_dir)
     name = Path(run_dir).name
@@ -207,6 +250,8 @@ def do_send(job, run_dir, catalog, solution, rounds=2, round_wait=60, apply=Fals
         return job.finish("notlive", "NOT LIVE YET - pac was not found, so nothing was sent.",
                           NOT_LIVE)
 
+    folder, what = choose_folder(job, run_dir, solution, full)
+
     for r in range(1, rounds + 1):
         last = r == rounds
         if r > 1:
@@ -227,9 +272,16 @@ def do_send(job, run_dir, catalog, solution, rounds=2, round_wait=60, apply=Fals
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         zip_path = str(Path(solution).parent / f"DemoHider_{stamp}.zip")
-        job.set(f"pack{r}", "run", f"run {name}")
-        if run_cmd(job, [pac_exe, "solution", "pack", "--zipfile", zip_path,
-                         "--folder", solution, "--packagetype", "Unmanaged"]) != 0:
+        job.set(f"pack{r}", "run", what)
+        packed = run_cmd(job, [pac_exe, "solution", "pack", "--zipfile", zip_path,
+                               "--folder", folder, "--packagetype", "Unmanaged"]) == 0
+        if not packed and folder != solution:
+            job.write("Packing the smaller copy failed - packing the whole solution instead.")
+            folder, what = solution, "whole solution"
+            job.set(f"pack{r}", "run", what)
+            packed = run_cmd(job, [pac_exe, "solution", "pack", "--zipfile", zip_path,
+                                   "--folder", folder, "--packagetype", "Unmanaged"]) == 0
+        if not packed:
             if r == 1:
                 job.set("pack1", "fail")
                 return job.finish("failed", "Packing failed - nothing was sent to Dynamics.",
@@ -237,7 +289,7 @@ def do_send(job, run_dir, catalog, solution, rounds=2, round_wait=60, apply=Fals
             return fail(f"pack{r}", "packing failed")
         job.set(f"pack{r}", "ok")
 
-        job.set(f"import{r}", "run")
+        job.set(f"import{r}", "run", what)
         if run_cmd(job, [pac_exe, "solution", "import", "--path", zip_path]) != 0:
             return fail(f"import{r}", "the import did not finish")
         job.set(f"import{r}", "ok")
@@ -285,6 +337,8 @@ def main():
     g = p.add_mutually_exclusive_group()
     g.add_argument("--apply", action="store_true", help="apply the previewed run first")
     g.add_argument("--undo", action="store_true", help="undo the applied run first")
+    p.add_argument("--full", action="store_true",
+                   help="send the whole solution, not only the changed tables")
     p = sub.add_parser("publish")
     p.add_argument("--run", required=True)
     a = ap.parse_args()
@@ -297,7 +351,7 @@ def main():
         do_publish(job, a.run)
     else:
         do_send(job, a.run, a.catalog, a.solution, max(1, a.rounds), a.round_wait,
-                a.apply, a.undo)
+                a.apply, a.undo, a.full)
     sys.exit(job.code)
 
 

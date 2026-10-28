@@ -46,9 +46,11 @@ DemoHider is a convenience tool for **demo and development environments**.
   - It only touches hides **it created** (tagged `demohider.`). It never removes anyone else's.
   - Other layers can still win. A managed solution installed later, or another customization, can
     add or re-show buttons.
-  - Every run re-imports **everything** in the DemoHider solution. Keep it to tables only, with no
-    components (forms, views, business rules); otherwise those are re-imported in the state they had
-    when you exported, which can overwrite later changes.
+  - Each run imports the **tables it changed**, with everything inside them (a trimmed copy of the
+    solution). If those tables include forms, views or columns, they are re-imported in the state they
+    had when you exported, which can overwrite later changes. Keep the tables in DemoHider bare
+    (no subcomponents). With `-FullSolution`, or when DemoHider falls back to the whole solution,
+    **everything** in it is re-imported.
   - If someone changes the DemoHider solution directly in Dynamics, export and unpack it again
     before the next run, or their change can be overwritten.
 - **Undo / rollback** restores the local solution files; Dynamics only changes when the solution is
